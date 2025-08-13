@@ -1,0 +1,35 @@
+﻿@inject _DbContext db;
+@{
+    Layout = null;
+    var user = (User)ViewBag.user;
+    var lang = (Lang)ViewBag.lang;
+    string langS = ViewBag.langS;
+    var lds = (List<LangDesc>)ViewBag.lds;
+    string action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    string cont = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+}
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <meta name="viewport" content="width=device-width" />
+    <meta charset="utf-8" />
+    <title>@Rep.Settings.Sitename</title>
+    <link rel="icon shortcut" href="/img/favicon.ico" sizes="16x16">
+
+    <link asp-href-include="~/css/plugins/*.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+    <link asp-href-include="~/css/*.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+
+    <script asp-src-include="~/js/plugins/*.js" asp-append-version="true"></script>
+    <script asp-src-include="~/js/*.js" asp-append-version="true"></script>
+</head>
+<body>
+    <div class="main">
+        <main>
+            @RenderBody()
+        </main>
+    </div>
+    <input type="hidden" id="session" value="@ViewBag.session" />
+</body>
+</html>

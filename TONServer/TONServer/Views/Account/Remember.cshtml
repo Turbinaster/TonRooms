@@ -1,0 +1,21 @@
+﻿
+@{
+    var lang = (Lang)ViewBag.lang;
+    ViewBag.Title = lang["Восстановление пароля"];
+}
+
+<script>
+    function send(b) {
+        disable(b);
+        var o = inputs('#form');
+        post('../../account/remember', o, function (data) { info('@lang["На указанный email отправлены инструкции по восстановлению пароля"]'); });
+    }
+</script>
+
+<div class="panel form">
+    <h1>@ViewBag.Title</h1>
+    <div id="form">
+        <div class="flex"><input type="text" id="email" placeholder="E-mail" /></div>
+        <div class="center"><button class="btn btn-green" onclick="send(this)">@lang["Submit"]</button></div>
+    </div>
+</div>

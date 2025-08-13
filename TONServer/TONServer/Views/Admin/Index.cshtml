@@ -1,0 +1,19 @@
+﻿@model Setting
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/_Shared/_AdminLayout.cshtml";
+}
+<script>
+    function save(b) {
+        disable(b);
+        var values = inputs('#set');
+        post('../../Admin/SaveSettings', values, function (data) {
+            info('Done!');
+        });
+    }
+</script>
+
+<div id="set" style="width: 50%; margin: 0 auto">
+    <div class="flex flex-center"><div class="flex1">Название сайта</div><div class="flex2">@Html.TextBoxFor(x => x.Sitename)</div></div>
+    <div class="center"><button class="btn btn-green" onclick="save(this)">Сохранить</button></div>
+</div>

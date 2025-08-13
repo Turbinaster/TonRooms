@@ -1,0 +1,50 @@
+﻿
+@{
+    var lang = (Lang)ViewBag.lang;
+    var user = (User)ViewBag.user;
+    ViewBag.Title = lang["Личный кабинет"];
+}
+
+<script>
+    function changePass(b) {
+        disable(b);
+        var o = inputs('#changePass');
+        post('../../account/ChangePass', o, function (data) { closeDialog(); info('@lang["Пароль изменен"]'); });
+    }
+
+    function changeData(b) {
+        disable(b);
+        var o = inputs('#data');
+        post('../../account/changeData', o, function (data) { closeDialog(); info('@lang["Данные изменены"]'); });
+    }
+</script>
+
+<div class="flex flex-stretch">
+    <div class="flex1"></div>
+    <div class="panel">
+        <h1>Аватар</h1>
+        <div>
+            <div class="center"><img class="avatar" src="@user.Avatar" style="width: 100px; height: 100px; margin: 10px" /></div>
+            <div class="center">@await Component.InvokeAsync("Upload", new { action = "account/addavatar", caption = lang["Загрузить аватар"] })</div>
+        </div>
+    </div>
+    <div class="panel form">
+        <h1>Изменить данные</h1>
+        <div id="data">
+            <div class="flex"><div class="flex1">@lang["Имя"]</div><div class="flex2"><input type="text" id="Name" placeholder="@lang["Имя"]" value="@user.Name" /></div></div>
+            <div class="flex"><div class="flex1">E-mail</div><div class="flex2"><input type="text" id="Login" placeholder="E-mail" value="@user.Login" /></div></div>
+            <div class="center"><button class="btn btn-green" onclick="changeData(this)">@lang["Submit"]</button></div>
+        </div>
+    </div>
+    <div class="panel">
+        <h1>Изменить пароль</h1>
+        <div id="changePass">
+            <div class="flex"><input type="password" id="oldPass" placeholder="@lang["Старый пароль"]" /></div>
+            <div class="flex"><input type="password" id="newPass" placeholder="@lang["Новый пароль"]" /></div>
+            <div class="flex"><input type="password" id="newPass1" placeholder="@lang["Новый пароль еще раз"]" /></div>
+            <div class="center"><button class="btn btn-green" onclick="changePass(this)">@lang["Submit"]</button></div>
+        </div>
+    </div>
+    <div class="flex1"></div>
+</div>
+

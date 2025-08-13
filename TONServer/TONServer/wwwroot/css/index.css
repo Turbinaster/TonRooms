@@ -1,0 +1,6 @@
+﻿.main-input { width: 50%; margin: 0 auto; display: flex; height: 100%; align-items: center; text-align: center; }
+
+
+@media screen and (max-width: 1080px) {
+    .main-input { width: 90%; }
+}

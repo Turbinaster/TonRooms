@@ -1,0 +1,52 @@
+﻿@model RoomWeb
+@inject _DbContext db;
+@{
+    var friends = db.RoomWebs.Where(x => Model.FriendsList.Contains(x.Id)).ToList();
+    var incoming = db.RoomWebs.Where(x => Model.IncomingsList.Contains(x.Id)).ToList();
+    var outcoming = db.RoomWebs.Where(x => Model.OutcomingsList.Contains(x.Id)).ToList();
+}
+
+<div>
+    @if (incoming.Count > 0)
+    {
+        <div class="line-after"><span>Входящие заявки (@incoming.Count)</span></div>
+        foreach (var m in incoming)
+        {
+            <div class="profile-menu flex flex-center">
+                <img class="friend-avatar" src="@m.Avatar" />
+                <div class="flex1" style="overflow: hidden; margin-left: 5px">@m.Name</div>
+                <button class="btn" onclick="addFriend(@m.Id)">Принять</button>
+                <button class="btn" onclick="removeFriend(@m.Id)" style="margin-left: 2px">Отклонить</button>
+            </div>
+        }
+    }
+    @if (outcoming.Count > 0)
+    {
+        <div class="line-after"><span>Исходящие заявки (@outcoming.Count)</span></div>
+        foreach (var m in outcoming)
+        {
+            <div class="profile-menu flex flex-center">
+                <img class="friend-avatar" src="@m.Avatar" />
+                <div class="flex1" style="overflow: hidden; margin-left: 5px">@m.Name</div>
+                <button class="btn" onclick="removeFriend(@m.Id)">Удалить</button>
+            </div>
+        }
+    }
+    @if (friends.Count > 0)
+    {
+        <div class="line-after"><span>Друзья (@friends.Count)</span></div>
+        foreach (var m in friends)
+        {
+            <div class="profile-menu flex flex-center">
+                <img class="friend-avatar" src="@m.Avatar" />
+                <div class="flex1" style="overflow: hidden; margin-left: 5px">@m.Name</div>
+                <button class="btn" onclick="removeFriend(@m.Id)">Удалить</button>
+            </div>
+        }
+    }
+    @if (incoming.Count == 0 && outcoming.Count == 0 && friends.Count == 0)
+    {
+        <div class="center">Друзей нет</div>
+    }
+</div>
+<a class="close" href="javascript:;" onclick="hidePanel('#friends', function () { $('#friends').hide() });"><img src="~/img/remove.png" /></a>

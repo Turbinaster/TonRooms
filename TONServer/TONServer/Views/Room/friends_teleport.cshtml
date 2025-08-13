@@ -1,0 +1,24 @@
+﻿@model RoomWeb
+@inject _DbContext db;
+@{
+    var friends = db.RoomWebs.Where(x => Model.FriendsList.Contains(x.Id)).ToList();
+}
+
+<div>
+    @if (friends.Count > 0)
+    {
+        <div class="line-after"><span>Друзья (@friends.Count)</span></div>
+        foreach (var m in friends)
+        {
+            <div class="profile-menu flex flex-center">
+                <img class="friend-avatar" src="@m.Avatar" />
+                <div class="flex1" style="overflow: hidden; margin-left: 5px">@m.Name</div>
+                <button class="btn" onclick="teleportFriend('@m.Address')">Перейти</button>
+            </div>
+        }
+    }
+    @if (friends.Count == 0)
+    {
+        <div class="center">Друзей нет</div>
+    }
+</div>

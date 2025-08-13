@@ -1,0 +1,5 @@
+d:\Projects\Unity\TON\Assets\Scenes
+d:\Projects\Unity\TON\Assets\StarterAssets
+d:\Projects\Unity\TON\Assets\StreamingAssets
+d:\Projects\Unity\TON\Assets\TextMesh Pro
+d:\Projects\Unity\TON\Assets\_

@@ -1,0 +1,6 @@
+d:\Projects\Unity\TONWeb\Assets\JsonDotNet
+d:\Projects\Unity\TONWeb\Assets\ProceduralUIImage
+d:\Projects\Unity\TONWeb\Assets\StreamingAssets
+d:\Projects\Unity\TONWeb\Assets\TextMesh Pro
+d:\Projects\Unity\TONWeb\Assets\WebGLTemplates
+d:\Projects\Unity\TONWeb\Assets\_

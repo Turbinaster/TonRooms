@@ -1,0 +1,30 @@
+﻿@model User
+@{
+    var lang = (Lang)ViewBag.lang;
+    ViewBag.Title = lang["Новый пароль"];
+}
+
+<script>
+    function send(b) {
+        disable(b);
+        var o = inputs('#form');
+        post('../../account/rememberconfirm', o, function (data) { info('@lang["Пароль изменен"]'); });
+    }
+</script>
+
+<div class="panel form">
+    <h1>@ViewBag.Title</h1>
+    <div id="form">
+        @if (Model == null)
+        {
+            <h3 class="center">@lang["Пользователь не найден"]</h3>
+        }
+        else
+        {
+            <div class="flex"><input type="password" id="newPass" placeholder="@lang["Новый пароль"]" /></div>
+            <div class="flex"><input type="password" id="newPass1" placeholder="@lang["Новый пароль еще раз"]" /></div>
+            <input type="hidden" id="confirmRemember" value="@Model.ConfirmRemember" />
+            <div class="center"><button class="btn btn-green" onclick="send(this)">@lang["Submit"]</button></div>
+        }
+    </div>
+</div>

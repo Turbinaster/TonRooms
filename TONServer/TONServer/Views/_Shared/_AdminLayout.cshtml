@@ -1,0 +1,50 @@
+﻿@inject _DbContext db;
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewBag.Title - @Libs.Helper.AppName</title>
+    
+    <link asp-href-include="~/css/plugins/*.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+    <link asp-href-include="~/css/*.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+    <style>
+        html { font-size: 14px; color: #000; }
+        body { background: #eee; display: flex; }
+        .main { flex-direction: row; }
+        h2, h3 { margin: 10px 20px; font-weight: normal; margin-bottom: 20px; }
+        th, td { font-size: 13px; }
+        
+        .left-panel { background-color: #343a40; box-shadow: 0 1px 1px 0 #6c6c6c; height: 100%; padding: 20px 0; position: fixed; width: 250px; }
+        .left-panel a { display: block; color: #ccc; padding: 10px 40px 10px 20px; text-decoration: none; }
+        .left-panel a:hover { color: #fff; background: #2a2f33; }
+        .left-panel .logo { margin: 10px !important; margin-right: 20px !important; }
+        .right-panel { padding: 10px 40px; margin-left: 250px; }
+
+        #langs td { padding: 0 5px; }
+
+        .red { color: #c33; }
+        .green { color: #8BC34A; }
+        .blue { color: #00BCD4; }
+    </style>
+    
+    <script asp-src-include="~/js/plugins/*.js" asp-append-version="true"></script>
+    <script asp-src-include="~/js/*.js" asp-append-version="true"></script>
+</head>
+<body>
+    <div class="flex main" style="min-width: 100%;">
+        <div class="left-panel">
+            <a href="../../admin/index">Настройки</a>
+            <a href="@Url.Action("logout", "account")">Выход</a>
+        </div>
+
+        <div class="right-panel flex1">
+            @RenderBody()
+        </div>
+    </div>
+</body>
+</html>

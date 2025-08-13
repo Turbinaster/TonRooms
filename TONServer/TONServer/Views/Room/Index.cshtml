@@ -1,0 +1,379 @@
+﻿@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>@Rep.Settings.Sitename</title>
+    <link rel="icon shortcut" href="/img/favicon.ico" sizes="16x16">
+    <link rel="stylesheet" type="text/css" href="/Build/index.css?v=@DateTime.Now.Ticks" />
+    <script src="~/js/plugins/!jquery-1.12.4.min.js"></script>
+    <script src="~/js/plugins/js.cookie-2.2.1.min.js"></script>
+    <script src="~/js/plugins/signalr.min.js"></script>
+    <script src="~/js/hub.js?v=@DateTime.Now.Ticks"></script>
+</head>
+<body style="text-align: center">
+    <div class="menu-icon"><a href="javascript:;" onclick="$('nav').animate({width: 'toggle', opacity: $('nav').is(':visible') ? 0 : 1}, 100)">&#8801;</a></div>
+    <a class="avatar-icon" href="javascript:;" onclick="showPanel('#profile_menu');">
+        <img class="avatar-owner" src="~/img/default.png" />
+        <span class="notify" style="display: none">!</span>
+    </a>
+    <nav>
+        <ul>
+            <li><a href="@Url.Action("index", "index")">Перейти</a></li>
+            <li id="home"><a href="javascript:;" onclick="home()">Домой</a></li>
+            <li id="mynft" style="display: none"><a href="javascript:;" onclick="mynft()">Мои NFT</a></li>
+            <li id="logout" style="display: none"><a href="javascript:;" onclick="logout()">Выйти</a></li>
+        </ul>
+    </nav>
+    <div id="panel" class="panel" style="display: none;">
+        <div id="left_panel"></div>
+        <div id="right_panel">
+            <div><img class="panel-img" src="" /></div>
+            <div><button id="panel_button" class="btn" style="display: none">Разместить в комнате</button></div><br />
+            <div id="description"></div><br />
+            <div><a id="url" target="_blank" href=""></a></div><br />
+        </div>
+        <a class="close" href="javascript:;" onclick="hidePanel('#panel', function () { $('#panel').hide() }); getNft();"><img src="~/img/remove.png" /></a>
+    </div>
+    <div id="profile_menu" class="panel" style="display: none;">
+        <div>
+            <div style="margin-bottom: 10px;"><b>Профиль</b></div>
+            <div class="flex flex-center">
+                <img class="avatar-owner" src="~/img/default.png" />
+                <div class="flex1 profile-owner" style="margin-left: 10px"></div>
+            </div>
+            <div style="margin-top: 10px;"><a class="profile-menu" href="javascript:;" onclick="hidePanel('#profile_menu', function () { $('#profile_menu').hide(); showPanel('#profile_edit') });">Редактировать</a></div>
+            <div><a class="profile-menu" href="javascript:;" onclick="showFriends()" style="position: relative">Мои друзья <span class="notify" style="display: none">!</span></a></div>
+            <div><a class="profile-menu" href="javascript:;" onclick="logout()">Выйти</a></div>
+        </div>
+        <a class="close" href="javascript:;" onclick="hidePanel('#profile_menu', function () { $('#profile_menu').hide() });"><img src="~/img/remove.png" /></a>
+    </div>
+    <div id="profile_edit" class="panel" style="display: none;">
+        <div>
+            <div style="margin-bottom: 10px;"><b>Изображение профиля</b></div>
+            <div class="flex flex-center">
+                <img class="avatar-owner" id="profile_edit_avatar_img" src="~/img/default.png" />
+                <div class="flex1" style="margin-left: 10px">@await Component.InvokeAsync("Upload", new { action = "room/addavatar", caption = "Загрузить аватар", cl = "profile-upload" })</div>
+                <input type="hidden" id="profile_edit_avatar" />
+            </div>
+            <div style="margin: 10px 0"><b>Отображаемое имя</b></div>
+            <div><input type="text" id="profile_edit_name" placeholder="Введите имя" /></div>
+            <div style="margin: 10px 0"><b>Описание</b></div>
+            <div><textarea id="profile_edit_desc" placeholder="Расскажите о себе"></textarea></div>
+            <div style="margin: 10px 0"><b>Ссылки</b></div>
+            <div class="flex"><img class="icon" src="~/img/tel.png" /><input class="flex1" type="text" id="profile_edit_link1" placeholder="t.me/" /></div>
+            <div class="flex"><img class="icon" src="~/img/url.png" /><input class="flex1" type="text" id="profile_edit_link2" placeholder="Ваша ссылка" /></div>
+            <div style="margin-top: 10px; text-align: center"><button class="btn" onclick="saveProfile()">Сохранить</button></div>
+        </div>
+        <a class="close" href="javascript:;" onclick="hidePanel('#profile_edit', function () { $('#profile_edit').hide() });"><img src="~/img/remove.png" /></a>
+    </div>
+    <div id="profile_info" class="panel" style="display: none;">
+        <div>
+            <div style="margin-bottom: 10px;"><b>Профиль</b></div>
+            <div class="flex flex-center">
+                <img class="avatar" src="~/img/default.png" />
+                <div class="flex1 profile-name" style="margin-left: 10px"></div>
+            </div>
+            <div class="profile-desc" style="margin-top: 10px;"></div>
+            <div class="flex"><img class="icon" src="~/img/tel.png" style="top: 10px" /><div class="profile-link1 flex1" style="margin-top: 10px;"><a class="profile-link" target="_blank" href=""></a></div></div>
+            <div class="flex"><img class="icon" src="~/img/url.png" style="top: 10px" /><div class="profile-link2 flex1" style="margin-top: 10px;"><a class="profile-link" target="_blank" href=""></a></div></div><br />
+            <div class="center"><button id="friendsButton" class="btn" onclick="toggleFriends()" style="display: none">Добавить в друзья</button></div>
+        </div>
+        <a class="close" href="javascript:;" onclick="hidePanel('#profile_info', function () { $('#profile_info').hide() });"><img src="~/img/remove.png" /></a>
+    </div>
+    <div id="friends" class="panel" style="display: none;"></div>
+    <div id="friends_teleport" class="panel" style="display: none;"></div>
+    <div id="load"><img src="https://acegif.com/wp-content/uploads/loading-100.gif" /></div>
+    <div class="meter animate"><span id="progress"><span></span></span></div>
+    <div id="log" style="position: absolute; padding: 5px; color: #fff; font-size: 10px">Ctrl - переключить курсор</div>
+    <div id="log1" style="position: absolute; padding: 5px; color: #fff; font-size: 10px"></div>
+    <a style="position: absolute; padding: 5px; right: 7px; bottom: 10px" onclick="toggleFullScreen()"><img src="~/img/fullscreen.png" style="width: 30px" /></a>
+    <input type="hidden" id="session" value="@ViewBag.session" />
+    <input type="hidden" id="address" value="@ViewBag.address" />
+    <script>
+        var items;
+        var unity;
+        var owner = false;
+        var _room = null;
+        var _owner = null;
+
+        $(document).ready(function () {
+            if (navigator.userAgentData.mobile) $('#log').hide();
+            var o = {};
+            o.session = Cookies.get('session');
+            //console.log('session=' + o.session)
+            o.address = $('#address').val();
+            post('../../room/GetAddress', o, function (data) {
+                if (data.result == true) {
+                    $('#home').hide();
+                    $('#mynft').show();
+                    $('#logout').show();
+                    owner = true;
+                }
+                items = data.items;
+                if (data.room != null) _room = data.room;
+                if (data.owner != null) _owner = data.owner;
+                if (data.auth) { $('.avatar-icon').show(); $('#friendsButton').show(); }
+                $('#friendsButton').text(data.text);
+                if (data.incoming > 0) $('.notify').show();
+            });
+
+            $('#panel_button').click(function () {
+                var o = {};
+                o.id = $(this).attr('data-id');
+                post('../../room/select', o, function (data) {
+                    console.log(data.selected);
+                    var v = items.find(x => { return x.id == o.id });
+                    v.selected = data.selected;
+                    if (data.selected) $('#panel_button').text('Убрать из комнаты'); else $('#panel_button').text('Разместить в комнате');
+                    var lpi = $('.left-panel-item[data-id="' + o.id + '"]');
+                    if (data.selected) lpi.addClass('selected'); else lpi.removeClass('selected');
+                });
+            });
+        });
+
+        function home() {
+            var session = randomString(20);
+            Cookies.set('session', session, { path: '/' });
+            location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+        }
+
+        function logout() {
+            var session = Cookies.get('session');
+            Cookies.set('session', '', { path: '/' });
+            location.href = '../../room/logout?session=' + session;
+        }
+
+        function mynft() {
+            unity.SendMessage('Init', 'ShowCursor');
+            $('.menu-icon a').click();
+            $('#left_panel').html('');
+            $('.panel-img').attr("src", "");
+            $('#panel_button').hide();
+            $('#description').text('');
+            $('#url').attr('href', '').text('');
+            showPanel('#panel', function () { $('#load').show(); })
+            var o = {};
+            o.session = Cookies.get('session');
+            post('../../room/GetNft', o, function (data) {
+                $('#load').hide();
+                $.each(data.images, function (i, v) {
+                    $('#left_panel').append('<div class="left-panel-item ' + (v.selected ? 'selected' : '') + '" data-id="' + v.id + '"><img src="' + v.url + '" /><div class="left-panel-text">' + v.name + '</div></div>')
+                });
+                items = data.images;
+                $('.left-panel-item').click(function () {
+                    var id = $(this).data('id');
+                    var v = items.find(x => { return x.id == id });
+                    $('.panel-img').attr("src", v.url);
+                    $('#panel_button').show();
+                    if (v.selected) $('#panel_button').text('Убрать из комнаты'); else $('#panel_button').text('Разместить в комнате');
+                    $('#panel_button').attr('data-id', v.id);
+                    $('#description').text(v.description);
+                    $('#url').attr('href', v.externalUrl).text(v.externalUrl);
+                });
+            });
+        }
+
+        function getNft() {
+            var result = items.filter(x => { return x.selected == true });
+            var set = {};
+            set.items = result;
+            set.owner = owner;
+            console.log(JSON.stringify(set))
+            unity.SendMessage('Init', 'GetNft', JSON.stringify(set));
+        }
+
+        function randomString(length) {
+            var result = '';
+            var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            var charactersLength = characters.length;
+            for (var i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() *
+                    charactersLength));
+            }
+            return result;
+        }
+
+        function post(url, params, s) {
+            $.ajax({
+                url: url,
+                type: 'POST',
+                traditional: true,
+                data: params,
+                success: function (data) {
+                    if (data.r == 'error') console.log(data.m);
+                    else if (s !== undefined) s(data);
+                },
+                error: function (request, status, error) {
+                    console.log(request.responseText, 'error');
+                }
+            });
+        }
+
+        function showPanel(selector, f) {
+            $(selector).show().animate({ opacity: 1 }, 100, function () { if (f != undefined) f(); });
+            unity.SendMessage('Init', 'ShowCursor');
+        }
+
+        function showPanelWithoutCursor(selector) {
+            $(selector).show().animate({ opacity: 1 }, 100);
+        }
+
+        function hidePanel(selector, f) {
+            $(selector).animate({ opacity: 0 }, 100, function () { if (f != undefined) f(); });
+            unity.SendMessage('Init', 'HideCursor');
+        }
+
+        function saveProfile() {
+            hidePanel('#profile_edit', function () { $('#profile_edit').hide() });
+            var o = {};
+            o.session = Cookies.get('session');
+            o.profile_edit_avatar = $('#profile_edit_avatar').val();
+            o.profile_edit_name = $('#profile_edit_name').val();
+            o.profile_edit_desc = $('#profile_edit_desc').val();
+            o.profile_edit_link1 = $('#profile_edit_link1').val();
+            o.profile_edit_link2 = $('#profile_edit_link2').val();
+            post('../../room/saveProfile', o, function (data) { if (owner) setData(data.rec, data.rec); else setData(null, data.rec); });
+        }
+
+        function setData(room, owner) {
+            if (room != null) {
+                $('.avatar').attr('src', room.avatar);
+                $('.profile-name').text(room.name);
+                if (room.desc != null) $('.profile-desc').text(room.desc);
+                if (room.link1 != null) { $('.profile-link1 a').text(room.link1); $('.profile-link1 a').attr('href', room.link1); }
+                if (room.link2 != null) { $('.profile-link2 a').text(room.link2); $('.profile-link2 a').attr('href', room.link2); }
+                unity.SendMessage('Init', 'SetData', room.avatar + '|' + room.name);
+            }
+            if (owner != null) {
+                $('.avatar-owner').attr('src', owner.avatar);
+                $('.profile-owner').text(owner.name);
+                $('#profile_edit_avatar').val(owner.avatar);
+                $('#profile_edit_name').val(owner.name);
+                $('#profile_edit_desc').val(owner.desc);
+                $('#profile_edit_link1').val(owner.link1);
+                $('#profile_edit_link2').val(owner.link2);
+            }
+        }
+
+        function receiveMessageFromUnity(txt) {
+            if (owner) showPanel('#profile_menu', function () { console.log(txt); });
+            else if (_room != null) showPanel('#profile_info', function () { console.log(txt); })
+        }
+
+        function toggleFriends() {
+            var o = {};
+            o.session = Cookies.get('session');
+            o.address = $('#address').val();
+            post('../../room/toggleFriends', o, function (data) { $('#friendsButton').text(data.text); });
+        }
+
+        function showFriends() {
+            hidePanel('#profile_menu', function () {
+                $('#profile_menu').hide();
+                var o = {};
+                o.session = Cookies.get('session');
+                post('../../room/showFriends', o, function (data) {
+                    $('#friends').html(data);
+                    showPanel('#friends');
+                });
+            });
+        }
+
+        function removeFriend(id) {
+            var o = {};
+            o.session = Cookies.get('session');
+            o.id = id;
+            post('../../room/removeFriend', o, function (data) { $('#friends').html(data); });
+        }
+
+        function addFriend(id) {
+            var o = {};
+            o.session = Cookies.get('session');
+            o.id = id;
+            post('../../room/addFriend', o, function (data) { $('#friends').html(data); });
+        }
+
+        function showFriendsTeleport() {
+            var o = {};
+            o.address = $('#address').val();
+            post('../../room/showFriendsTeleport', o, function (data) {
+                $('#friends_teleport').html(data);
+                showPanelWithoutCursor('#friends_teleport');
+            });
+        }
+
+        function hideFriendsTeleport() {
+            hidePanel('#friends_teleport', function () { $('#friends_teleport').hide() });
+        }
+
+        function teleportFriend(address) {
+            location.href = '../../' + address;
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement &&    // alternative standard method
+                !document.mozFullScreenElement && !document.webkitFullscreenElement) {  // current working methods
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.mozRequestFullScreen) {
+                    document.documentElement.mozRequestFullScreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+                }
+            } else {
+                if (document.cancelFullScreen) {
+                    document.cancelFullScreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.webkitCancelFullScreen) {
+                    document.webkitCancelFullScreen();
+                }
+            }
+        }
+
+        function receiveMessageFromUnity1(txt) {
+            $('#log1').text(txt)
+        }
+    </script>
+
+    <canvas id="unity-canvas" style="width: 100%; height: 100%; background: #1F1F20"></canvas>
+    <script src="/Build/_publish.loader.js"></script>
+    <script>
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            // Mobile device style: fill the whole browser client area with the game canvas:
+            var meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+            document.getElementsByTagName('head')[0].appendChild(meta);
+        }
+
+        createUnityInstance(document.querySelector("#unity-canvas"), {
+            dataUrl: "/Build/_publish.data",
+            frameworkUrl: "/Build/_publish.framework.js",
+            codeUrl: "/Build/_publish.wasm",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "DefaultCompany",
+            productName: "TONWeb",
+            productVersion: "1.0",
+            // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
+            // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
+        },
+            (progress) => { $('#progress').width(100 * progress + "%"); }
+        ).then(function (unityInstance) { $('#progress').parent().hide(); handle(unityInstance); });
+
+        function handle(unityInstance) {
+            unity = unityInstance;
+            var b = navigator.userAgentData.mobile;
+            unity.SendMessage('Init', 'Mobile', b.toString());
+            setData(_room, _owner);
+            getNft();
+        }
+    </script>
+</body>
+</html>
+

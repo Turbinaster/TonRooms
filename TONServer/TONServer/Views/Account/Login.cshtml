@@ -1,0 +1,26 @@
+﻿@model User
+@{
+    var lang = (Lang)ViewBag.lang;
+    ViewBag.Title = lang["Вход"];
+}
+
+<script>
+    function send(b) {
+        disable(b);
+        var o = inputs('#form');
+        post('../../account/login', o, function (data) { location.href = data.url; });
+    }
+</script>
+
+<div class="panel form">
+    <h1>@ViewBag.Title</h1>
+    <div id="form">
+        <div class="flex">@Html.TextBoxFor(x => x.Login, new { placeholder = "E-mail" })</div>
+        <div class="flex">@Html.PasswordFor(x => x.Pass, new { placeholder = lang["Пароль"] })</div>
+        <div class="flex flex-bottom">
+            <a href="@Url.Action("remember", "account")">@lang["Восстановить пароль"]</a>
+            <div class="flex1"></div>
+            <button class="btn btn-green default" onclick="send(this)">@lang["Вход"]</button>
+        </div>
+    </div>
+</div>

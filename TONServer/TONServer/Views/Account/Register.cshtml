@@ -1,0 +1,28 @@
+﻿@model User
+@{
+    var lang = (Lang)ViewBag.lang;
+    ViewBag.Title = lang["Регистрация"];
+    var set = Rep.Settings;
+}
+<script src='https://www.google.com/recaptcha/api.js'></script>
+
+<script>
+    function send(b) {
+        disable(b);
+        var o = inputs('#form');
+        post('../../account/register', o, function (data) { location.href = data.url; });
+    }
+</script>
+
+<div class="panel form">
+    <h1>@ViewBag.Title</h1>
+    <div id="form">
+        <div class="flex">@Html.TextBoxFor(x => x.Name, new { placeholder = lang["Имя"] })</div>
+        <div class="flex">@Html.TextBoxFor(x => x.Login, new { placeholder = "E-mail" })</div>
+        <div class="flex">@Html.PasswordFor(x => x.Pass, new { placeholder = lang["Пароль"] })</div>
+        <div class="registration__form-capcha">
+            <div class="g-recaptcha" data-sitekey="@set.RecaptchaKey"></div>
+        </div>
+        <div class="center"><button class="btn btn-green default" onclick="send(this)">@lang["Регистрация"]</button></div>
+    </div>
+</div>

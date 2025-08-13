@@ -1,0 +1,41 @@
+﻿@{
+    var lang = (Lang)ViewBag.lang;
+    ViewBag.Title = lang["Главная"];
+}
+
+<script>
+    $(document).ready(function () {
+
+    });
+
+    function go() {
+        var address = $('#address').val();
+        if (address == '') er('Необходимо ввести адрес');
+        else location.href = '../../' + address;
+    }
+
+    function home() {
+        var session = randomString(20);
+        Cookies.set('session', session, { path: '/' });
+        location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+    }
+
+    function randomString(length) {
+        var result = '';
+        var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        var charactersLength = characters.length;
+        for (var i = 0; i < length; i++) {
+            result += characters.charAt(Math.floor(Math.random() *
+                charactersLength));
+        }
+        return result;
+    }
+</script>
+
+<div class="main-input">
+    <div class="flex1">
+        <input id="address" type="text" placeholder="TON address" style="background: #0000002e; color: #fff" /><br /><br />
+        <button class="btn btn-green default" onclick="go()">Вперед</button>
+        <button class="btn btn-green" onclick="home()" style="margin-left: 20px">Домой</button>
+    </div>
+</div>

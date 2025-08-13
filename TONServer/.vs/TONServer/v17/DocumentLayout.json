@@ -1,0 +1,64 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{468EDC84-D1CD-4DC6-857F-7E6AB5799E81}|TONServer\\TONServer.csproj|d:\\projects\\freelance\\\u0430\u0440\u0445\u0438\u0432\\tonserver\\tonserver\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{468EDC84-D1CD-4DC6-857F-7E6AB5799E81}|TONServer\\TONServer.csproj|solutionrelative:tonserver\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{468EDC84-D1CD-4DC6-857F-7E6AB5799E81}|TONServer\\TONServer.csproj|D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\tonserver\\tonserver.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
+      "RelativeMoniker": "D:0:0:{468EDC84-D1CD-4DC6-857F-7E6AB5799E81}|TONServer\\TONServer.csproj|solutionrelative:tonserver\\tonserver.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{50170fd7-46b4-3c72-bca6-b7a2bc08534e}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{87493c0f-c4b9-3a09-bb7b-358ab49f624a}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{17190a8b-df25-30bf-93e3-9d5ddfe5fef9}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\TONServer\\appsettings.json",
+              "RelativeDocumentMoniker": "TONServer\\appsettings.json",
+              "ToolTip": "D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\TONServer\\appsettings.json",
+              "RelativeToolTip": "TONServer\\appsettings.json",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAMAAABSAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2024-05-03T14:48:49.238Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "TONServer",
+              "DocumentMoniker": "D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\TONServer\\TONServer.csproj",
+              "RelativeDocumentMoniker": "TONServer\\TONServer.csproj",
+              "ToolTip": "D:\\Projects\\Freelance\\\u0410\u0440\u0445\u0438\u0432\\TONServer\\TONServer\\TONServer.csproj",
+              "RelativeToolTip": "TONServer\\TONServer.csproj",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2024-05-03T14:27:36.007Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

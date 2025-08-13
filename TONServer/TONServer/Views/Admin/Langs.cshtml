@@ -1,0 +1,131 @@
+﻿@inject _DbContext db;
+@{
+    ViewBag.Title = "Языки";
+    Layout = "~/Views/_Shared/_AdminLayout.cshtml";
+    var lds = LangRep.LangDescs();
+    var langs = LangRep.Langs();
+}
+<script>
+    $(document).ready(function () {
+        handleLang();
+        $('#langName').keypress(function (e) {
+            if (e.keyCode == 13) $('#addLangButton').click();
+        });
+    });
+
+    function handleLang() {
+        $('.change-lang').change(function () {
+            post('../Admin/ChangeLang', { name: $(this).data('name'), lang: $(this).data('lang'), text: $(this).val() }, function (data) { });
+        });
+        $('.change-lang').each(function () {
+            autoGrow(this);
+        });
+    }
+
+    function addLang() {
+        var name = $('#langName').val();
+        post('../../Admin/AddLang', { name: name }, function (data) {
+            closeDialog();
+            $('#langs tbody').prepend($('#newLang table tbody').html().format(name))
+            handleLang();
+            $('textarea:first').focus();
+        });
+    }
+
+    function addLangDesc() {
+        var name = $('#langDescName').val();
+        var desc = $('#langDescDesc').val();
+        post('../../Admin/AddLangDesc', { name: name, desc: desc }, function (data) {
+            location.reload();
+        });
+    }
+
+    function removeLang(name) {
+        post('../../Admin/RemoveLang', { name: name }, function (data) {
+            $('.lang' + name.replace(/\s/g, '-')).remove();
+        });
+    }
+
+    function removeLangDesc(id) {
+        if (confirm('Вы уверены?')) {
+            post('../../Admin/removeLangDesc', { id: id }, function (data) { location.reload(); });
+        }
+    }
+
+    function editLangDescShow(lang, desc) {
+        dialog('#addLangDesc');
+        $('#langDescName').val(lang);
+        $('#langDescDesc').val(desc);
+    }
+</script>
+
+<h2>@ViewBag.Title</h2>
+
+<div>
+    <input type="text" id="search" />
+    <a class="btn btn-gray" href="javascript:;" onclick="dialog('#addLang')">Добавить строку</a>
+    <a class="btn btn-gray" href="javascript:;" onclick="dialog('#addLangDesc')">Добавить язык</a>
+</div><br />
+
+<table id="langs" style="width: auto">
+    <thead>
+        <tr>
+            <th class="w1">Название</th>
+            @foreach (var l in lds)
+            {
+                <th style="min-width: 300px">
+                    @l.Desc (@l.Lang)
+                    <a href="javascript:;" onclick="editLangDescShow('@l.Lang', '@l.Desc')"><img class="remove" src="~/img/edit.png" /></a>
+                    <a href="javascript:;" onclick="removeLangDesc(@l.Id)"><img class="remove" src="~/img/remove.png" /></a>
+                </th>
+            }
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var name in langs["ru"].Keys)
+        {
+            <tr class="lang@(name.Replace(" ", "-"))">
+                <td class="left">@name</td>
+                @foreach (var l in langs.Keys)
+                {
+                    if (l == "Id" || l == "Name") { continue; }
+                    <td><textarea class="change-lang" data-name="@name" data-lang="@l" onkeyup="autoGrow(this)" style="overflow: hidden">@langs[l][name]</textarea></td>
+                }
+                <td><a href="javascript:;" onclick="removeLang('@name')"><img class="remove" src="~/img/remove.png" /></a></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="hidden" id="newLang">
+    <table>
+        <tr>
+            <td>{0}</td>
+            @foreach (var l in langs.Keys)
+            {
+                if (l == "Id" || l == "Name") { continue; }
+                <td><textarea class="change-lang" data-name="{0}" data-lang="@l" onkeyup="autoGrow(this)"></textarea></td>
+            }
+        </tr>
+    </table>
+</div>
+
+<div class="modals">
+    <div class="panel" id="addLang">
+        <h2>Добавить строку</h2>
+        <div>
+            <div class="flex"><div class="flex1">Название:</div><div class="flex2"><input type="text" id="langName" /></div></div>
+            <div class="center"><button class="btn btn-green" id="addLangButton" onclick="addLang()">Отправить</button></div>
+        </div>
+    </div>
+
+    <div class="panel" id="addLangDesc">
+        <h2>Добавить язык</h2>
+        <div>
+            <div class="flex"><div class="flex1">Название (ru, en, de...):</div><div class="flex2"><input type="text" id="langDescName" /></div></div>
+            <div class="flex"><div class="flex1">Описание:</div><div class="flex2"><input type="text" id="langDescDesc" /></div></div>
+            <div class="center"><button class="btn" onclick="addLangDesc()">Отправить</button></div>
+        </div>
+    </div>
+</div>

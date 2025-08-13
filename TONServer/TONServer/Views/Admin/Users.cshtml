@@ -1,0 +1,29 @@
+﻿@model List<User>
+@{
+    ViewBag.Title = "Пользователи";
+    Layout = "~/Views/_Shared/_AdminLayout.cshtml";
+}
+<script>
+    function removeUser(id) {
+        if (confirm('Вы уверены?')) {
+            post('../../Admin/RemoveUser', { id: id }, function (data) { $('#tr' + id).remove(); });
+        }
+    }
+</script>
+
+<h2>@ViewBag.Title</h2>
+<table>
+    <tr><th>Id</th><th>Логин</th><th>Имя</th><th>Дата регистрации</th><th></th></tr>
+    @foreach (var m in Model)
+    {
+        if (m.Role == "admin") { continue; }
+        <tr id="tr@(m.Id)">
+            <td>@m.Id</td>
+            <td>@m.Login</td>
+            <td>@m.Name</td>
+            <td>@Helper.Dts(m.Date)</td>
+            <td><a href="javascript:;" title="Удалить" onclick="removeUser(@m.Id)"><img class="remove" src="~/img/remove.png" /></a></td>
+        </tr>
+    }
+</table>
+@await Component.InvokeAsync("Pagination")
