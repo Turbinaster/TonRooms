@@ -139,7 +139,8 @@
         function home() {
             var session = randomString(20);
             Cookies.set('session', session, { path: '/' });
-            location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+            var returnUrl = window.location.origin + '/room/auth?session=' + session;
+            location.href = 'https://tonapi.io/login?return_url=' + encodeURIComponent(returnUrl);
         }
 
         function logout() {
