@@ -144,30 +144,30 @@ public class HexGrid : MonoBehaviour
 
     async void CalcSize(float width, float height, RectTransform t, HexCell cell, bool calc, List<Transform> walls, string url)
     {
-        //Ширина и высота картинки
+        //ГГЁГ°ГЁГ­Г  ГЁ ГўГ»Г±Г®ГІГ  ГЄГ Г°ГІГЁГ­ГЄГЁ
         var w = width / 1000;
         var h = height / 1000;
         if (w < 1) { var delta = w / h; w = 1; h = w / delta; }
         if (h < 1) { var delta = h / w; h = 1; w = h / delta; }
         t.sizeDelta = new Vector2(w, h);
 
-        w += 0.1f;  //пространство между картинками
-        var w1 = w; //ширина сохраняется для первой картинки нового ряда
-        var sum = cell.w.Sum(); //сумма ширины всех картинок ряда
-        cell.w.Add(w);  //ширина сохраняется в общем списке
-        w /= 2; //ширина делится на 2 из-за сдвига координат
-        w += sum;   //прибавляется к общей сумме
-        if (w + w1 > 5.8f)  //если картинка не вмещается в ширину холста
+        w += 0.1f;  //ГЇГ°Г®Г±ГІГ°Г Г­Г±ГІГўГ® Г¬ГҐГ¦Г¤Гі ГЄГ Г°ГІГЁГ­ГЄГ Г¬ГЁ
+        var w1 = w; //ГёГЁГ°ГЁГ­Г  Г±Г®ГµГ°Г Г­ГїГҐГІГ±Гї Г¤Г«Гї ГЇГҐГ°ГўГ®Г© ГЄГ Г°ГІГЁГ­ГЄГЁ Г­Г®ГўГ®ГЈГ® Г°ГїГ¤Г 
+        var sum = cell.w.Sum(); //Г±ГіГ¬Г¬Г  ГёГЁГ°ГЁГ­Г» ГўГ±ГҐГµ ГЄГ Г°ГІГЁГ­Г®ГЄ Г°ГїГ¤Г 
+        cell.w.Add(w);  //ГёГЁГ°ГЁГ­Г  Г±Г®ГµГ°Г Г­ГїГҐГІГ±Гї Гў Г®ГЎГ№ГҐГ¬ Г±ГЇГЁГ±ГЄГҐ
+        w /= 2; //ГёГЁГ°ГЁГ­Г  Г¤ГҐГ«ГЁГІГ±Гї Г­Г  2 ГЁГ§-Г§Г  Г±Г¤ГўГЁГЈГ  ГЄГ®Г®Г°Г¤ГЁГ­Г ГІ
+        w += sum;   //ГЇГ°ГЁГЎГ ГўГ«ГїГҐГІГ±Гї ГЄ Г®ГЎГ№ГҐГ© Г±ГіГ¬Г¬ГҐ
+        if (w + w1 > 5.8f)  //ГҐГ±Г«ГЁ ГЄГ Г°ГІГЁГ­ГЄГ  Г­ГҐ ГўГ¬ГҐГ№Г ГҐГІГ±Гї Гў ГёГЁГ°ГЁГ­Гі ГµГ®Г«Г±ГІГ 
         {
-            cell.w.Clear(); //очищается список ширины
-            cell.w.Add(w1); //добавляется начальная ширина картинки
-            w = w1 / 2; //делится на 2, чтобы не вылазила за пределы слева
-            cell.maxHeight += cell.h.Max() + 0.1f;  //сохраняется максимальная высота ряда
-            cell.h.Clear(); //очищается список высот
+            cell.w.Clear(); //Г®Г·ГЁГ№Г ГҐГІГ±Гї Г±ГЇГЁГ±Г®ГЄ ГёГЁГ°ГЁГ­Г»
+            cell.w.Add(w1); //Г¤Г®ГЎГ ГўГ«ГїГҐГІГ±Гї Г­Г Г·Г Г«ГјГ­Г Гї ГёГЁГ°ГЁГ­Г  ГЄГ Г°ГІГЁГ­ГЄГЁ
+            w = w1 / 2; //Г¤ГҐГ«ГЁГІГ±Гї Г­Г  2, Г·ГІГ®ГЎГ» Г­ГҐ ГўГ»Г«Г Г§ГЁГ«Г  Г§Г  ГЇГ°ГҐГ¤ГҐГ«Г» Г±Г«ГҐГўГ 
+            cell.maxHeight += cell.h.Max() + 0.1f;  //Г±Г®ГµГ°Г Г­ГїГҐГІГ±Гї Г¬Г ГЄГ±ГЁГ¬Г Г«ГјГ­Г Гї ГўГ»Г±Г®ГІГ  Г°ГїГ¤Г 
+            cell.h.Clear(); //Г®Г·ГЁГ№Г ГҐГІГ±Гї Г±ГЇГЁГ±Г®ГЄ ГўГ»Г±Г®ГІ
         }
-        cell.h.Add(h);  //высота добавляется в общий список
+        cell.h.Add(h);  //ГўГ»Г±Г®ГІГ  Г¤Г®ГЎГ ГўГ«ГїГҐГІГ±Гї Гў Г®ГЎГ№ГЁГ© Г±ГЇГЁГ±Г®ГЄ
         var h1 = h;
-        h = -h / 2 - cell.maxHeight;    //высота вычисляется сдвигом вниз, делением на 2 и прибавлением максимальной высоты верхних рядов
+        h = -h / 2 - cell.maxHeight;    //ГўГ»Г±Г®ГІГ  ГўГ»Г·ГЁГ±Г«ГїГҐГІГ±Гї Г±Г¤ГўГЁГЈГ®Г¬ ГўГ­ГЁГ§, Г¤ГҐГ«ГҐГ­ГЁГҐГ¬ Г­Г  2 ГЁ ГЇГ°ГЁГЎГ ГўГ«ГҐГ­ГЁГҐГ¬ Г¬Г ГЄГ±ГЁГ¬Г Г«ГјГ­Г®Г© ГўГ»Г±Г®ГІГ» ГўГҐГ°ГµГ­ГЁГµ Г°ГїГ¤Г®Гў
         if (h - h1 < -4.8f)
         {
             cell.index++;
@@ -194,7 +194,7 @@ public class HexGrid : MonoBehaviour
     {
         init.ButtonAuth.SetActive(false);
         string session = Helper.RandomString();
-        Application.OpenURL($"https://tonapi.io/login?return_url=http://45.132.107.107/index/auth?session={session}");
+        Application.OpenURL($"https://rooms.worldofton.ru/?session={session}");
 
         while (true)
         {
@@ -311,7 +311,7 @@ public class HexGrid : MonoBehaviour
         StartCoroutine(DownloadImage(url, image, null, calc, t, cell, walls));
     }
 
-    //TODO: оптимизировать
+    //TODO: Г®ГЇГІГЁГ¬ГЁГ§ГЁГ°Г®ГўГ ГІГј
     public async void GetRooms()
     {
         var j = await Helper.Post("http://45.132.107.107/index/GetRooms", $"");
@@ -325,7 +325,7 @@ public class HexGrid : MonoBehaviour
             ClearRoom(cell);
             cell.coordinates.address = address;
 
-            //Этажи
+            //ГќГІГ Г¦ГЁ
             int floors = (int)item["floors"];
             if (floors > 0)
             {

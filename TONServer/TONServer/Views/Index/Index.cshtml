@@ -3,21 +3,107 @@
     ViewBag.Title = lang["Главная"];
 }
 
+<script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js"></script>
 <script>
-    $(document).ready(function () {
+    const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+        manifestUrl: `${window.location.origin}/tonconnect-manifest.json`
+    });
+    let tonConnectSession = null;
 
+    tonConnectUI.onStatusChange(handleTonConnectWallet);
+    tonConnectUI.connectionRestored.then(function (wallet) {
+        handleTonConnectWallet(wallet);
+    });
+
+    $(document).ready(function () {
+        var params = new URLSearchParams(window.location.search);
+        var sessionParam = params.get('session');
+        if (sessionParam) {
+            Cookies.set('session', sessionParam, { path: '/' });
+            startTonConnect(sessionParam);
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
     });
 
     function go() {
         var address = $('#address').val();
-        if (address == '') er('Необходимо ввести адрес');
+        if (address == '') showTonConnectError('Необходимо ввести адрес');
         else location.href = '../../' + address;
     }
 
     function home() {
         var session = randomString(20);
         Cookies.set('session', session, { path: '/' });
-        location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+        startTonConnect(session);
+    }
+
+    function startTonConnect(session) {
+        tonConnectSession = session;
+        $.ajax({
+            url: '/index/gettonconnectpayload',
+            type: 'POST',
+            data: { session: session },
+            success: function (data) {
+                if (data.r === 'ok') {
+                    tonConnectUI.setConnectRequestParameters({
+                        state: 'ready',
+                        value: { tonProof: data.payload }
+                    });
+                    tonConnectUI.openModal();
+                } else if (data.m) {
+                    tonConnectSession = null;
+                    showTonConnectError(data.m);
+                }
+            },
+            error: function () {
+                tonConnectSession = null;
+                showTonConnectError('Не удалось запросить TonConnect payload');
+            }
+        });
+    }
+
+    function handleTonConnectWallet(wallet) {
+        if (!tonConnectSession) return;
+        if (!wallet || !wallet.account) return;
+
+        var proofItem = wallet.connectItems && wallet.connectItems.tonProof;
+        if (!proofItem || !proofItem.proof) return;
+
+        var proof = $.extend({}, proofItem.proof);
+        if (proofItem.state_init) proof.state_init = proofItem.state_init;
+
+        var session = tonConnectSession;
+        tonConnectSession = null;
+
+        $.ajax({
+            url: '/room/tonconnectauth',
+            type: 'POST',
+            data: {
+                session: session,
+                address: wallet.account.address,
+                proof: JSON.stringify(proof)
+            },
+            success: function (data) {
+                if (data.r === 'ok') {
+                    tonConnectUI.setConnectRequestParameters(null);
+                    tonConnectUI.closeModal();
+                    location.href = '/' + data.address;
+                } else {
+                    tonConnectSession = session;
+                    if (data.m) showTonConnectError(data.m);
+                }
+            },
+            error: function () {
+                tonConnectSession = session;
+                showTonConnectError('Не удалось подтвердить подпись TonConnect');
+            }
+        });
+    }
+
+    function showTonConnectError(message) {
+        if (typeof er === 'function') er(message); else alert(message);
     }
 
     function randomString(length) {
@@ -25,8 +111,7 @@
         var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         var charactersLength = characters.length;
         for (var i = 0; i < length; i++) {
-            result += characters.charAt(Math.floor(Math.random() *
-                charactersLength));
+            result += characters.charAt(Math.floor(Math.random() * charactersLength));
         }
         return result;
     }

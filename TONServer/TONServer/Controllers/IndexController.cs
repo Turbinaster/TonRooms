@@ -21,30 +21,22 @@ namespace TONServer
             return View();
         }
 
-        public async Task<IActionResult> Auth()
+        [HttpPost]
+        public async Task<IActionResult> GetTonConnectPayload(string session)
         {
-            /*var list = new List<string>();
-            foreach (string key in Request.Query.Keys) list.Add($"{key}={Request.Query[key]}");
-            Helper.Log(string.Join("&", list));*/
-            
-            string session = Request.Query["session"].ToString();
-            var split = session.Split('?');
-            session = split[0];
-            string authToken = split[1].Replace("authToken=", "");
-
-            var p = new Parser();
-            p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-            p.Go($"https://tonapi.io/v1/oauth/getToken?auth_token={authToken}&rate_limit=100&token_type=server");
-            var j = p.Json();
-            if (j != null && j["address"] != null)
+            try
             {
-                string address = j["address"].ToString();
-                if (!_Singleton.Sessions.ContainsKey(session)) _Singleton.Sessions.Add(session, address);
-                else _Singleton.Sessions[session] = address;
+                if (string.IsNullOrEmpty(session)) throw new Exception("Session required");
+                var payload = await TonConnectService.GetPayloadAsync();
+                if (_Singleton.Payloads.ContainsKey(session)) _Singleton.Payloads[session] = payload;
+                else _Singleton.Payloads.Add(session, payload);
+                return Json(new { r = "ok", payload });
             }
-            else Helper.Log(p.Content);
-            
-            return Content("");
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
 
         [HttpPost]

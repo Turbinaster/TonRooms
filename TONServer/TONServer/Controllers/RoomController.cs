@@ -2,6 +2,7 @@
 using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,36 +25,51 @@ namespace TONServer.Controllers
             return View();
         }
 
-        public async Task<IActionResult> Auth()
+        [HttpPost]
+        public async Task<IActionResult> TonConnectAuth(string session, string address, string proof)
         {
-            var list = new List<string>();
-            foreach (string key in Request.Query.Keys) list.Add($"{key}={Request.Query[key]}");
-            Helper.Log(string.Join("&", list));
-
-            string session = Request.Query["session"].ToString();
-            var split = session.Split('?');
-            session = split[0];
-            string authToken = split[1].Replace("authToken=", "");
-
-            string address = "";
-            var p = new Parser();
-            p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-            p.Go($"https://tonapi.io/v1/oauth/getToken?auth_token={authToken}&rate_limit=100&token_type=server");
-            var j = p.Json();
-            if (j != null && j["address"] != null)
+            try
             {
-                address = j["address"].ToString();
-                if (!_Singleton.Sessions.ContainsKey(session)) _Singleton.Sessions.Add(session, address);
-                else _Singleton.Sessions[session] = address;
+                if (string.IsNullOrEmpty(session)) throw new Exception("Session required");
+                if (string.IsNullOrEmpty(address)) throw new Exception("Address required");
+                if (string.IsNullOrEmpty(proof)) throw new Exception("Proof required");
+
+                if (!_Singleton.Payloads.ContainsKey(session)) throw new Exception("TonConnect session expired");
+
+                var proofJson = JObject.Parse(proof);
+                var payload = proofJson["payload"]?.ToString();
+                if (string.IsNullOrEmpty(payload) || _Singleton.Payloads[session] != payload)
+                {
+                    throw new Exception("Proof payload mismatch");
+                }
+
+                if (proofJson["state_init"] == null && proofJson["stateInit"] != null)
+                {
+                    proofJson["state_init"] = proofJson["stateInit"];
+                    proofJson.Remove("stateInit");
+                }
+
+                await TonConnectService.VerifyProofAsync(address, proofJson);
+
+                if (_Singleton.Sessions.ContainsKey(session)) _Singleton.Sessions[session] = address;
+                else _Singleton.Sessions.Add(session, address);
+
+                _Singleton.Payloads.Remove(session);
+
                 if (!db.RoomWebs.Any(x => x.Address == address))
                 {
-                    db.RoomWebs.Add(new RoomWeb { Address = address, Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}", Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png" });
+                    string name = address.Length > 8 ? $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}" : address;
+                    db.RoomWebs.Add(new RoomWeb { Address = address, Name = name, Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png" });
                     db.SaveChanges();
                 }
-            }
-            else Helper.Log(p.Content);
 
-            return RedirectToAction("index", "room", new { id = address });
+                return Json(new { r = "ok", address });
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
         
         public IActionResult Logout(string session)

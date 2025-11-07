@@ -13,6 +13,7 @@
     <script src="~/js/plugins/!jquery-1.12.4.min.js"></script>
     <script src="~/js/plugins/js.cookie-2.2.1.min.js"></script>
     <script src="~/js/plugins/signalr.min.js"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js"></script>
     <script src="~/js/hub.js?v=@DateTime.Now.Ticks"></script>
 </head>
 <body style="text-align: center">
@@ -100,6 +101,15 @@
         var owner = false;
         var _room = null;
         var _owner = null;
+        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: `${window.location.origin}/tonconnect-manifest.json`
+        });
+        let tonConnectSession = null;
+
+        tonConnectUI.onStatusChange(handleTonConnectWallet);
+        tonConnectUI.connectionRestored.then(function (wallet) {
+            handleTonConnectWallet(wallet);
+        });
 
         $(document).ready(function () {
             if (navigator.userAgentData.mobile) $('#log').hide();
@@ -139,13 +149,81 @@
         function home() {
             var session = randomString(20);
             Cookies.set('session', session, { path: '/' });
-            location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+            startTonConnect(session);
         }
 
         function logout() {
             var session = Cookies.get('session');
             Cookies.set('session', '', { path: '/' });
+            try { tonConnectUI.disconnect(); } catch (e) { }
             location.href = '../../room/logout?session=' + session;
+        }
+
+        function startTonConnect(session) {
+            tonConnectSession = session;
+            $.ajax({
+                url: '/index/gettonconnectpayload',
+                type: 'POST',
+                data: { session: session },
+            success: function (data) {
+                if (data.r === 'ok') {
+                    tonConnectUI.setConnectRequestParameters({
+                        state: 'ready',
+                        value: { tonProof: data.payload }
+                    });
+                    tonConnectUI.openModal();
+                } else if (data.m) {
+                    tonConnectSession = null;
+                    showTonConnectError(data.m);
+                }
+            },
+            error: function () {
+                tonConnectSession = null;
+                showTonConnectError('Не удалось запросить TonConnect payload');
+            }
+        });
+        }
+
+        function handleTonConnectWallet(wallet) {
+            if (!tonConnectSession) return;
+            if (!wallet || !wallet.account) return;
+
+            var proofItem = wallet.connectItems && wallet.connectItems.tonProof;
+            if (!proofItem || !proofItem.proof) return;
+
+            var proof = $.extend({}, proofItem.proof);
+            if (proofItem.state_init) proof.state_init = proofItem.state_init;
+
+            var session = tonConnectSession;
+            tonConnectSession = null;
+
+            $.ajax({
+                url: '/room/tonconnectauth',
+                type: 'POST',
+                data: {
+                    session: session,
+                    address: wallet.account.address,
+                    proof: JSON.stringify(proof)
+                },
+                success: function (data) {
+                    if (data.r === 'ok') {
+                        tonConnectUI.setConnectRequestParameters(null);
+                        tonConnectUI.closeModal();
+                        location.href = '/' + data.address;
+                    } else {
+                        tonConnectSession = session;
+                        if (data.m) showTonConnectError(data.m);
+                    }
+                },
+                error: function () {
+                    tonConnectSession = session;
+                    showTonConnectError('Не удалось подтвердить подпись TonConnect');
+                }
+            });
+        }
+
+        function showTonConnectError(message) {
+            if (typeof er === 'function') er(message); else alert(message);
         }
 
         function mynft() {
