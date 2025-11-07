@@ -21,30 +21,26 @@ namespace TONServer
             return View();
         }
 
-        public async Task<IActionResult> Auth()
+        [HttpGet]
+        public IActionResult Connect(string session)
         {
-            /*var list = new List<string>();
-            foreach (string key in Request.Query.Keys) list.Add($"{key}={Request.Query[key]}");
-            Helper.Log(string.Join("&", list));*/
-            
-            string session = Request.Query["session"].ToString();
-            var split = session.Split('?');
-            session = split[0];
-            string authToken = split[1].Replace("authToken=", "");
+            ViewBag.SessionKey = session;
+            return View();
+        }
 
-            var p = new Parser();
-            p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-            p.Go($"https://tonapi.io/v1/oauth/getToken?auth_token={authToken}&rate_limit=100&token_type=server");
-            var j = p.Json();
-            if (j != null && j["address"] != null)
+        [HttpPost]
+        public IActionResult Auth(string session, string address)
+        {
+            try
             {
-                string address = j["address"].ToString();
-                if (!_Singleton.Sessions.ContainsKey(session)) _Singleton.Sessions.Add(session, address);
-                else _Singleton.Sessions[session] = address;
+                SetSessionAddress(session, address);
+                return Json(new { r = "ok" });
             }
-            else Helper.Log(p.Content);
-            
-            return Content("");
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
 
         [HttpPost]

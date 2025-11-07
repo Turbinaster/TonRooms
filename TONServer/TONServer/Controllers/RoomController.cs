@@ -24,36 +24,39 @@ namespace TONServer.Controllers
             return View();
         }
 
-        public async Task<IActionResult> Auth()
+        [HttpGet]
+        public IActionResult Auth(string session, string address)
         {
-            var list = new List<string>();
-            foreach (string key in Request.Query.Keys) list.Add($"{key}={Request.Query[key]}");
-            Helper.Log(string.Join("&", list));
-
-            string session = Request.Query["session"].ToString();
-            var split = session.Split('?');
-            session = split[0];
-            string authToken = split[1].Replace("authToken=", "");
-
-            string address = "";
-            var p = new Parser();
-            p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-            p.Go($"https://tonapi.io/v1/oauth/getToken?auth_token={authToken}&rate_limit=100&token_type=server");
-            var j = p.Json();
-            if (j != null && j["address"] != null)
+            if (string.IsNullOrWhiteSpace(session) || string.IsNullOrWhiteSpace(address))
             {
-                address = j["address"].ToString();
-                if (!_Singleton.Sessions.ContainsKey(session)) _Singleton.Sessions.Add(session, address);
-                else _Singleton.Sessions[session] = address;
-                if (!db.RoomWebs.Any(x => x.Address == address))
-                {
-                    db.RoomWebs.Add(new RoomWeb { Address = address, Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}", Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png" });
-                    db.SaveChanges();
-                }
+                return RedirectToAction("index", "index");
             }
-            else Helper.Log(p.Content);
+
+            try
+            {
+                RegisterRoomSession(session, address);
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+            }
 
             return RedirectToAction("index", "room", new { id = address });
+        }
+
+        [HttpPost]
+        public IActionResult Connect(string session, string address)
+        {
+            try
+            {
+                RegisterRoomSession(session, address);
+                return Json(new { r = "ok", redirect = Url.Action("index", "room", new { id = address }) });
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
         
         public IActionResult Logout(string session)
@@ -209,6 +212,27 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private void RegisterRoomSession(string session, string address)
+        {
+            SetSessionAddress(session, address);
+            if (!db.RoomWebs.Any(x => x.Address == address))
+            {
+                var shortName = address;
+                if (!string.IsNullOrEmpty(address) && address.Length > 8)
+                {
+                    shortName = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
+                }
+
+                db.RoomWebs.Add(new RoomWeb
+                {
+                    Address = address,
+                    Name = shortName,
+                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                });
+                db.SaveChanges();
+            }
         }
 
         [HttpPost]

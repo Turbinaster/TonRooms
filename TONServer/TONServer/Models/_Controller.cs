@@ -111,5 +111,27 @@ namespace TONServer
                 return sw.GetStringBuilder().ToString();
             }
         }
+
+        protected void SetSessionAddress(string sessionKey, string address)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey))
+            {
+                throw new ArgumentException("Session key is required", nameof(sessionKey));
+            }
+
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                throw new ArgumentException("Wallet address is required", nameof(address));
+            }
+
+            if (!_Singleton.Sessions.ContainsKey(sessionKey))
+            {
+                _Singleton.Sessions.Add(sessionKey, address);
+            }
+            else
+            {
+                _Singleton.Sessions[sessionKey] = address;
+            }
+        }
     }
 }

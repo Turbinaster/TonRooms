@@ -1,0 +1,78 @@
+@{
+    Layout = "_Layout";
+    var sessionKey = ViewBag.SessionKey as string ?? string.Empty;
+}
+
+<div class="connect-page">
+    <h2>Подключение TON-кошелька</h2>
+    <p class="connect-page__hint">Подключите Tonkeeper или другой совместимый кошелек с помощью TonConnect. После подтверждения можно закрыть эту вкладку и вернуться в приложение.</p>
+    <div class="wallet-auth connect-page__wallet">
+        <span class="wallet-auth__badge" data-tonconnect-network></span>
+        <div class="wallet-auth__connected" data-tonconnect-connected style="display: none;">
+            <span class="wallet-auth__address" data-tonconnect-address></span>
+            <button type="button" class="wallet-auth__disconnect" data-tonconnect-disconnect>Отключить</button>
+        </div>
+        <button type="button" class="btn btn-green wallet-auth__connect" data-tonconnect-connect>Подключить кошелек</button>
+    </div>
+    <div id="connect-status" class="connect-status"></div>
+</div>
+
+@section Scripts {
+    <script>
+        $(function () {
+            var sessionKey = '@sessionKey';
+            var statusEl = $('#connect-status');
+            var registerInProgress = false;
+            var registered = false;
+
+            function setStatus(message, isError) {
+                statusEl.text(message || '');
+                statusEl.toggleClass('error', !!isError);
+            }
+
+            function handleRegistration(wallet) {
+                if (!wallet || registered || registerInProgress) {
+                    return;
+                }
+
+                registerInProgress = true;
+                TonConnectManager.registerSession({
+                    session: sessionKey,
+                    address: wallet.account.address,
+                    url: '@Url.Action("Auth", "Index")'
+                }).then(function () {
+                    registered = true;
+                    setStatus('Кошелек подключен. Вы можете вернуться в приложение.', false);
+                }).catch(function (error) {
+                    setStatus(error.message || 'Не удалось зарегистрировать сессию', true);
+                }).finally(function () {
+                    registerInProgress = false;
+                });
+            }
+
+            if (!sessionKey) {
+                setStatus('Не удалось определить идентификатор сессии. Закройте окно и попробуйте снова.', true);
+                $('[data-tonconnect-connect]').prop('disabled', true);
+                return;
+            }
+
+            var restoredWallet = TonConnectManager.getWallet();
+            if (restoredWallet) {
+                handleRegistration(restoredWallet);
+            }
+
+            $('[data-tonconnect-connect]').on('click.connect-page', function () {
+                TonConnectManager.ensureConnected().then(handleRegistration).catch(function (error) {
+                    if (error instanceof window.TonConnectSDK.UserRejectsError) {
+                        setStatus('Подключение отменено в кошельке.', true);
+                    }
+                });
+            });
+
+            $(document).on('click.connect-page', '[data-tonconnect-disconnect]', function () {
+                registered = false;
+                setStatus('', false);
+            });
+        });
+    </script>
+}
