@@ -115,7 +115,17 @@
         let tonConnectSession = null;
         let tonkeeperLinks = null;
 
-        tonConnectUI.onStatusChange(handleTonConnectWallet);
+        tonConnectUI.onStatusChange(function (wallet) {
+            if (!wallet && tonConnectSession) {
+                tonConnectSession = null;
+                tonConnectUI.setConnectRequestParameters(null);
+                updateTonkeeperLinks(null);
+                return;
+            }
+            if (tonConnectSession) {
+                handleTonConnectWallet(wallet);
+            }
+        });
         tonConnectUI.connectionRestored.then(function (wallet) {
             handleTonConnectWallet(wallet);
         });
@@ -158,6 +168,7 @@
         function home() {
             var session = randomString(20);
             Cookies.set('session', session, { path: '/' });
+            try { tonConnectUI.disconnect(); } catch (e) { }
             startTonConnect(session);
         }
 
@@ -174,31 +185,31 @@
                 url: '/index/gettonconnectpayload',
                 type: 'POST',
                 data: { session: session },
-            success: function (data) {
-                if (data.r === 'ok') {
-                    tonConnectUI.setConnectRequestParameters({
-                        state: 'ready',
-                        value: { tonProof: data.payload }
-                    });
-                    updateTonkeeperLinks(data.links);
-                    tonConnectUI.openModal();
-                } else if (data.m) {
+                success: function (data) {
+                    if (data.r === 'ok') {
+                        tonConnectUI.setConnectRequestParameters({
+                            state: 'ready',
+                            value: { tonProof: { payload: data.payload } }
+                        });
+                        updateTonkeeperLinks(data.links);
+                        tonConnectUI.openModal();
+                    } else if (data.m) {
+                        tonConnectSession = null;
+                        showTonConnectError(data.m);
+                        updateTonkeeperLinks(null);
+                    }
+                },
+                error: function () {
                     tonConnectSession = null;
-                    showTonConnectError(data.m);
+                    showTonConnectError('Не удалось запросить TonConnect payload');
                     updateTonkeeperLinks(null);
                 }
-            },
-            error: function () {
-                tonConnectSession = null;
-                showTonConnectError('Не удалось запросить TonConnect payload');
-                updateTonkeeperLinks(null);
-            }
-        });
+            });
         }
 
         function handleTonConnectWallet(wallet) {
-            if (!tonConnectSession) return;
             if (!wallet || !wallet.account) return;
+            if (!tonConnectSession && !wallet.connectItems) return;
 
             var proofItem = wallet.connectItems && wallet.connectItems.tonProof;
             if (!proofItem || !proofItem.proof) return;
@@ -208,6 +219,7 @@
 
             var session = tonConnectSession;
             tonConnectSession = null;
+            if (!session) return;
 
             $.ajax({
                 url: '/room/tonconnectauth',

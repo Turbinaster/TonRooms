@@ -11,7 +11,17 @@
     let tonConnectSession = null;
     let tonkeeperLinks = null;
 
-    tonConnectUI.onStatusChange(handleTonConnectWallet);
+    tonConnectUI.onStatusChange(function (wallet) {
+        if (!wallet && tonConnectSession) {
+            tonConnectSession = null;
+            tonConnectUI.setConnectRequestParameters(null);
+            updateTonkeeperLinks(null);
+            return;
+        }
+        if (tonConnectSession) {
+            handleTonConnectWallet(wallet);
+        }
+    });
     tonConnectUI.connectionRestored.then(function (wallet) {
         handleTonConnectWallet(wallet);
     });
@@ -37,6 +47,7 @@
     function home() {
         var session = randomString(20);
         Cookies.set('session', session, { path: '/' });
+        try { tonConnectUI.disconnect(); } catch (e) { }
         startTonConnect(session);
     }
 
@@ -51,7 +62,7 @@
                 if (data.r === 'ok') {
                     tonConnectUI.setConnectRequestParameters({
                         state: 'ready',
-                        value: { tonProof: data.payload }
+                        value: { tonProof: { payload: data.payload } }
                     });
                     updateTonkeeperLinks(data.links);
                     tonConnectUI.openModal();
@@ -70,8 +81,8 @@
     }
 
     function handleTonConnectWallet(wallet) {
-        if (!tonConnectSession) return;
         if (!wallet || !wallet.account) return;
+        if (!tonConnectSession && !wallet.connectItems) return;
 
         var proofItem = wallet.connectItems && wallet.connectItems.tonProof;
         if (!proofItem || !proofItem.proof) return;
@@ -81,6 +92,7 @@
 
         var session = tonConnectSession;
         tonConnectSession = null;
+        if (!session) return;
 
         $.ajax({
             url: '/room/tonconnectauth',
