@@ -19,6 +19,7 @@
         getWallet: function () { return connector.wallet; },
         registerSession: registerSession,
         formatAddress: formatAddress,
+        normalizeAddress: normalizeAddress,
         connector: connector
     };
 
@@ -179,11 +180,17 @@
         if (!options || !options.session || !options.address || !options.url) {
             return Promise.reject('registerSession: invalid parameters');
         }
+
+        var normalizedAddress = normalizeAddress(options.address, options.chain);
+        if (!normalizedAddress) {
+            return Promise.reject(new Error('Не удалось определить адрес TON-кошелька'));
+        }
+
         return new Promise(function (resolve, reject) {
             if (typeof window.post === 'function') {
                 window.post(options.url, {
                     session: options.session,
-                    address: options.address
+                    address: normalizedAddress
                 }, function (data) {
                     if (data && data.r === 'ok') {
                         resolve(data);
@@ -199,7 +206,7 @@
                     type: 'POST',
                     data: {
                         session: options.session,
-                        address: options.address
+                        address: normalizedAddress
                     }
                 }).done(function (data) {
                     if (data && data.r === 'ok') {
@@ -281,9 +288,10 @@
         var disconnectButtons = $('[data-tonconnect-disconnect]');
 
         if (wallet) {
-            var friendly = formatAddress(wallet.account.address, wallet.account.chain);
-            addressElement.text(friendly).attr('title', friendly ? wallet.account.address : '');
-            var chainLabel = wallet.account.chain === window.TonConnectSDK.CHAIN.TESTNET ? 'testnet' : 'mainnet';
+            var normalized = normalizeAddress(wallet.account.address, wallet.account.chain);
+            var friendly = normalized ? formatAddress(wallet.account.address, wallet.account.chain) : '';
+            addressElement.text(friendly).attr('title', normalized || '');
+            var chainLabel = resolveIsTestnet(wallet.account.chain) ? 'testnet' : 'mainnet';
             badgeElement.text(chainLabel);
             badgeElement.addClass('visible');
             connectButtons.hide();
@@ -298,16 +306,116 @@
     }
 
     function formatAddress(address, chain) {
+        var normalized = normalizeAddress(address, chain);
+        if (!normalized) {
+            return '';
+        }
+        if (normalized.length <= 8) {
+            return normalized;
+        }
+        return normalized.slice(0, 4) + '...' + normalized.slice(-4);
+    }
+
+    function normalizeAddress(address, chain) {
         if (!address) {
             return '';
         }
-        try {
-            var friendly = window.TonConnectSDK.toUserFriendlyAddress(address, chain === window.TonConnectSDK.CHAIN.TESTNET);
-            return friendly.slice(0, 4) + '...' + friendly.slice(-4);
-        } catch (error) {
-            console.warn('Failed to format address', error);
+        if (address.indexOf(':') === -1) {
             return address;
         }
+
+        try {
+            var testOnly = resolveIsTestnet(chain);
+            return rawAddressToFriendly(address, { testOnly: testOnly, bounceable: false });
+        } catch (error) {
+            console.warn('Failed to normalize address', error);
+            return address;
+        }
+    }
+
+    function resolveIsTestnet(chain) {
+        var chainValue = typeof chain !== 'undefined' ? chain : (connector.wallet && connector.wallet.account ? connector.wallet.account.chain : undefined);
+
+        if (typeof chainValue === 'string') {
+            var lower = chainValue.toLowerCase();
+            if (lower === 'testnet') {
+                return true;
+            }
+            if (lower === 'mainnet') {
+                return false;
+            }
+            var parsed = parseInt(chainValue, 10);
+            if (!isNaN(parsed)) {
+                chainValue = parsed;
+            }
+        }
+
+        if (typeof chainValue === 'number' && window.TonConnectSDK && window.TonConnectSDK.CHAIN) {
+            return chainValue === window.TonConnectSDK.CHAIN.TESTNET;
+        }
+
+        return false;
+    }
+
+    function rawAddressToFriendly(address, options) {
+        options = options || {};
+        var parts = address.split(':');
+        if (parts.length !== 2) {
+            throw new Error('Invalid raw address format');
+        }
+
+        var wc = parseInt(parts[0], 10);
+        if (isNaN(wc)) {
+            throw new Error('Invalid workchain value');
+        }
+
+        var hex = (parts[1] || '').replace(/[^0-9a-fA-F]/g, '');
+        if (hex.length !== 64) {
+            throw new Error('Invalid address hash length');
+        }
+
+        var bytes = new Uint8Array(36);
+        var tag = options.bounceable === false ? 0x51 : 0x11;
+        if (options.testOnly) {
+            tag |= 0x80;
+        }
+        bytes[0] = tag;
+        bytes[1] = wc < 0 ? wc + 256 : wc;
+
+        for (var i = 0; i < 32; i++) {
+            bytes[2 + i] = parseInt(hex.substr(i * 2, 2), 16);
+        }
+
+        var crc = crc16(bytes, 34);
+        bytes[34] = (crc >> 8) & 0xff;
+        bytes[35] = crc & 0xff;
+
+        return bytesToBase64(bytes);
+    }
+
+    function crc16(bytes, length) {
+        var crc = 0xffff;
+        for (var i = 0; i < length; i++) {
+            crc ^= bytes[i] << 8;
+            for (var j = 0; j < 8; j++) {
+                if (crc & 0x8000) {
+                    crc = (crc << 1) ^ 0x1021;
+                } else {
+                    crc <<= 1;
+                }
+                crc &= 0xffff;
+            }
+        }
+        return crc;
+    }
+
+    function bytesToBase64(bytes) {
+        var binary = '';
+        for (var i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        var base64 = typeof btoa === 'function' ? btoa(binary) : Buffer.from(bytes).toString('base64');
+        return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
     function isMobile() {

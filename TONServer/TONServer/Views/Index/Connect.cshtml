@@ -36,9 +36,17 @@
                 }
 
                 registerInProgress = true;
+                var friendlyAddress = TonConnectManager.normalizeAddress(wallet.account.address, wallet.account.chain);
+                if (!friendlyAddress) {
+                    setStatus('Не удалось преобразовать адрес кошелька.', true);
+                    registerInProgress = false;
+                    return;
+                }
+
                 TonConnectManager.registerSession({
                     session: sessionKey,
-                    address: wallet.account.address,
+                    address: friendlyAddress,
+                    chain: wallet.account.chain,
                     url: '@Url.Action("Auth", "Index")'
                 }).then(function () {
                     registered = true;
