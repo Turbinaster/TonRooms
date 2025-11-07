@@ -29,6 +29,14 @@
             <li id="logout" style="display: none"><a href="javascript:;" onclick="logout()">Выйти</a></li>
         </ul>
     </nav>
+    <div class="wallet-auth room-wallet">
+        <span class="wallet-auth__badge" data-tonconnect-network></span>
+        <div class="wallet-auth__connected" data-tonconnect-connected style="display: none;">
+            <span class="wallet-auth__address" data-tonconnect-address></span>
+            <button type="button" class="wallet-auth__disconnect" data-tonconnect-disconnect>Отключить</button>
+        </div>
+        <button type="button" class="btn btn-green wallet-auth__connect" data-tonconnect-connect>Подключить кошелек</button>
+    </div>
     <div id="panel" class="panel" style="display: none;">
         <div id="left_panel"></div>
         <div id="right_panel">
@@ -102,6 +110,9 @@
         var _owner = null;
 
         $(document).ready(function () {
+            if (window.TonConnectManager && typeof window.TonConnectManager.init === 'function') {
+                window.TonConnectManager.init();
+            }
             if (navigator.userAgentData.mobile) $('#log').hide();
             var o = {};
             o.session = Cookies.get('session');
@@ -136,15 +147,55 @@
             });
         });
 
-        function home() {
+        async function home() {
+            if (!window.TonConnectManager) {
+                er('TonConnect недоступен. Обновите страницу.');
+                return;
+            }
+
             var session = randomString(20);
             Cookies.set('session', session, { path: '/' });
-            location.href = 'https://tonapi.io/login?return_url=https://rooms.worldofton.ru/room/auth?session=' + session;
+
+            try {
+                var wallet = await TonConnectManager.ensureConnected();
+                if (!wallet || !wallet.account || !wallet.account.address) {
+                    throw new Error('Не удалось получить адрес кошелька');
+                }
+
+                var friendlyAddress = TonConnectManager.normalizeAddress(wallet.account.address, wallet.account.chain);
+                if (!friendlyAddress) {
+                    throw new Error('Не удалось преобразовать адрес кошелька');
+                }
+
+                var result = await TonConnectManager.registerSession({
+                    session: session,
+                    address: friendlyAddress,
+                    chain: wallet.account.chain,
+                    url: '@Url.Action("Connect", "Room")'
+                });
+
+                if (result && result.redirect) {
+                    location.href = result.redirect;
+                } else {
+                    location.href = '../../room/index/' + friendlyAddress;
+                }
+            } catch (error) {
+                if (window.TonConnectSDK && error instanceof window.TonConnectSDK.UserRejectsError) {
+                    er('Подключение отменено в кошельке');
+                } else if (error && error.message) {
+                    er(error.message);
+                } else {
+                    er('Не удалось подключить кошелек');
+                }
+            }
         }
 
-        function logout() {
+        async function logout() {
             var session = Cookies.get('session');
             Cookies.set('session', '', { path: '/' });
+            if (window.TonConnectManager) {
+                try { await TonConnectManager.disconnect(); } catch (e) { console.error(e); }
+            }
             location.href = '../../room/logout?session=' + session;
         }
 
