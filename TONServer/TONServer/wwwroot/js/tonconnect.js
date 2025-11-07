@@ -394,7 +394,8 @@
     }
 
     function crc16(bytes, length) {
-        var crc = 0xffff;
+        // TON friendly format relies on CRC16-CCITT with zero seed
+        var crc = 0;
         for (var i = 0; i < length; i++) {
             crc ^= bytes[i] << 8;
             for (var j = 0; j < 8; j++) {
