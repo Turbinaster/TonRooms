@@ -30,6 +30,14 @@
             <li id="logout" style="display: none"><a href="javascript:;" onclick="logout()">Выйти</a></li>
         </ul>
     </nav>
+    <div id="tonkeeperLinks" style="display: none; position: absolute; top: 70px; right: 20px; z-index: 5; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;">
+        <div style="color: #fff; margin-bottom: 10px;">Откройте Tonkeeper напрямую:</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <a id="tonkeeperUniversal" class="btn" target="_blank" rel="noopener">Tonkeeper (universal link)</a>
+            <a id="tonkeeperApp" class="btn" href="#">Tonkeeper приложение</a>
+            <a id="tonDeepLink" class="btn" href="#">ton:// ссылка</a>
+        </div>
+    </div>
     <div id="panel" class="panel" style="display: none;">
         <div id="left_panel"></div>
         <div id="right_panel">
@@ -105,6 +113,7 @@
             manifestUrl: `${window.location.origin}/tonconnect-manifest.json`
         });
         let tonConnectSession = null;
+        let tonkeeperLinks = null;
 
         tonConnectUI.onStatusChange(handleTonConnectWallet);
         tonConnectUI.connectionRestored.then(function (wallet) {
@@ -171,15 +180,18 @@
                         state: 'ready',
                         value: { tonProof: data.payload }
                     });
+                    updateTonkeeperLinks(data.links);
                     tonConnectUI.openModal();
                 } else if (data.m) {
                     tonConnectSession = null;
                     showTonConnectError(data.m);
+                    updateTonkeeperLinks(null);
                 }
             },
             error: function () {
                 tonConnectSession = null;
                 showTonConnectError('Не удалось запросить TonConnect payload');
+                updateTonkeeperLinks(null);
             }
         });
         }
@@ -209,6 +221,7 @@
                     if (data.r === 'ok') {
                         tonConnectUI.setConnectRequestParameters(null);
                         tonConnectUI.closeModal();
+                        updateTonkeeperLinks(null);
                         location.href = '/' + data.address;
                     } else {
                         tonConnectSession = session;
@@ -224,6 +237,18 @@
 
         function showTonConnectError(message) {
             if (typeof er === 'function') er(message); else alert(message);
+        }
+
+        function updateTonkeeperLinks(links) {
+            tonkeeperLinks = links || null;
+            if (!tonkeeperLinks) {
+                $('#tonkeeperLinks').hide();
+                return;
+            }
+            $('#tonkeeperLinks').show();
+            $('#tonkeeperUniversal').attr('href', tonkeeperLinks.tonkeeperUniversal);
+            $('#tonkeeperApp').attr('href', tonkeeperLinks.tonkeeperDeeplink);
+            $('#tonDeepLink').attr('href', tonkeeperLinks.tonDeeplink);
         }
 
         function mynft() {

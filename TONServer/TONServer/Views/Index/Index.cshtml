@@ -9,6 +9,7 @@
         manifestUrl: `${window.location.origin}/tonconnect-manifest.json`
     });
     let tonConnectSession = null;
+    let tonkeeperLinks = null;
 
     tonConnectUI.onStatusChange(handleTonConnectWallet);
     tonConnectUI.connectionRestored.then(function (wallet) {
@@ -41,6 +42,7 @@
 
     function startTonConnect(session) {
         tonConnectSession = session;
+        updateTonkeeperLinks(null);
         $.ajax({
             url: '/index/gettonconnectpayload',
             type: 'POST',
@@ -51,15 +53,18 @@
                         state: 'ready',
                         value: { tonProof: data.payload }
                     });
+                    updateTonkeeperLinks(data.links);
                     tonConnectUI.openModal();
                 } else if (data.m) {
                     tonConnectSession = null;
                     showTonConnectError(data.m);
+                    updateTonkeeperLinks(null);
                 }
             },
             error: function () {
                 tonConnectSession = null;
                 showTonConnectError('Не удалось запросить TonConnect payload');
+                updateTonkeeperLinks(null);
             }
         });
     }
@@ -89,6 +94,7 @@
                 if (data.r === 'ok') {
                     tonConnectUI.setConnectRequestParameters(null);
                     tonConnectUI.closeModal();
+                    updateTonkeeperLinks(null);
                     location.href = '/' + data.address;
                 } else {
                     tonConnectSession = session;
@@ -104,6 +110,18 @@
 
     function showTonConnectError(message) {
         if (typeof er === 'function') er(message); else alert(message);
+    }
+
+    function updateTonkeeperLinks(links) {
+        tonkeeperLinks = links || null;
+        if (!tonkeeperLinks) {
+            $('#tonkeeperLinks').hide();
+            return;
+        }
+        $('#tonkeeperLinks').show();
+        $('#tonkeeperUniversal').attr('href', tonkeeperLinks.tonkeeperUniversal);
+        $('#tonkeeperApp').attr('href', tonkeeperLinks.tonkeeperDeeplink);
+        $('#tonDeepLink').attr('href', tonkeeperLinks.tonDeeplink);
     }
 
     function randomString(length) {
@@ -122,5 +140,13 @@
         <input id="address" type="text" placeholder="TON address" style="background: #0000002e; color: #fff" /><br /><br />
         <button class="btn btn-green default" onclick="go()">Вперед</button>
         <button class="btn btn-green" onclick="home()" style="margin-left: 20px">Домой</button>
+        <div id="tonkeeperLinks" style="display: none; margin-top: 20px;">
+            <div style="margin-bottom: 10px; color: #fff;">Или откройте Tonkeeper напрямую:</div>
+            <div class="flex" style="gap: 10px; flex-wrap: wrap;">
+                <a id="tonkeeperUniversal" class="btn" target="_blank" rel="noopener">Tonkeeper (universal link)</a>
+                <a id="tonkeeperApp" class="btn" href="#">Tonkeeper приложение</a>
+                <a id="tonDeepLink" class="btn" href="#">ton:// ссылка</a>
+            </div>
+        </div>
     </div>
 </div>
