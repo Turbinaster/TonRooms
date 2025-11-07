@@ -133,8 +133,16 @@
             }
 
             var remoteWallet = walletData.wallets.find(function (wallet) {
-                return wallet.universalLink && wallet.bridgeUrl;
+                var appName = (wallet.appName || '').toLowerCase();
+                var name = (wallet.name || '').toLowerCase();
+                return (appName === 'tonkeeper' || name.indexOf('tonkeeper') !== -1) && wallet.universalLink && wallet.bridgeUrl;
             });
+
+            if (!remoteWallet) {
+                remoteWallet = walletData.wallets.find(function (wallet) {
+                    return wallet.universalLink && wallet.bridgeUrl;
+                });
+            }
 
             if (!remoteWallet) {
                 throw new Error('Не найден удаленный кошелек TonConnect');
