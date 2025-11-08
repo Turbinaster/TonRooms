@@ -2,6 +2,7 @@
 using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -89,23 +90,31 @@ namespace TONServer.Controllers
                 string address = "";
                 if (session == null && _Singleton.Development) address = "EQB0zy3wOR35FF1q2j3NsCxOyqzoRYioFroMqvsYEJ7mJ7-6";
                 else address = _Singleton.Sessions.ContainsKey(session) ? _Singleton.Sessions[session] : "";
-                var p = new Parser();
-                //p.Fiddler = true;
-                p.Timeout = 300000;
-                p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                p.Go($"https://tonapi.io/v1/nft/getItemsByOwnerAddress?account={address}");
-                var j = p.Json();
-                var list = new List<string>();
-                if (j != null && j["nft_items"] != null)
+                LogInformation($"RoomController.GetNft invoked for session '{session ?? "<null>"}' with address '{address}'.");
+                if (string.IsNullOrWhiteSpace(address))
                 {
-                    foreach (var item in j["nft_items"])
+                    var missingAddressMessage = "Wallet address is not available for the current session.";
+                    LogWarning(missingAddressMessage);
+                    return Json(new { r = "error", m = missingAddressMessage, images = new List<ImageWeb>() });
+                }
+
+                var accountId = await ResolveTonAccountIdAsync(address);
+                TonApiResponse nftResponse = null;
+                if (!string.IsNullOrWhiteSpace(accountId))
+                {
+                    nftResponse = await GetTonApiJsonAsync($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
+                }
+                var json = nftResponse?.Json;
+                var rawContent = nftResponse?.RawContent;
+                if (json != null && json["nft_items"] != null)
+                {
+                    foreach (var item in json["nft_items"])
                     {
                         try
                         {
                             if (item["metadata"] != null && item["metadata"]["image"] != null)
                             {
                                 string url = item["metadata"]["image"].ToString();
-                                list.Add(url);
                                 string name = item["metadata"]["name"]?.ToString();
                                 string description = item["metadata"]["description"]?.ToString();
                                 string external_url = item["metadata"]["external_url"]?.ToString();
@@ -125,12 +134,9 @@ namespace TONServer.Controllers
                                         await convert.SaveFileAsync(path);
                                     }
                                 }
-                                else
+                                else if (!System.IO.File.Exists(path))
                                 {
-                                    if (!System.IO.File.Exists(path))
-                                    {
-                                        p.DownloadFile(url, path);
-                                    }
+                                    await DownloadFileAsync(url, path);
                                 }
                                 string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
                                 image.Url = result;
@@ -139,15 +145,27 @@ namespace TONServer.Controllers
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
+                    var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
+                    foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
+                    db.SaveChanges();
+                    LogInformation($"Synchronized {images.Count} NFT images for address '{address}'.");
+                    return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
                 }
-                else Helper.Log(p.Content);
-                var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
-                foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
-                foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
-                db.SaveChanges();
-                return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(rawContent)) Helper.Log(rawContent);
+                    var status = nftResponse?.StatusCode;
+                    var message = $"TON API did not return NFT data for address '{address}' (status {(int?)status} {status}).";
+                    LogWarning(message);
+                    return Json(new { r = "error", m = message, images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                }
             }
-            catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex)
+            {
+                LogException(ex, "Unhandled exception while loading NFTs for room.");
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
 
         [HttpPost]
