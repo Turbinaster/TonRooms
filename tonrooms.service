@@ -1,0 +1,16 @@
+[Unit]
+Description=TonRooms ASP.NET Core Service
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/tonrooms
+ExecStart=/usr/bin/dotnet /var/www/tonrooms/TONServer.dll
+Restart=always
+RestartSec=10
+SyslogIdentifier=tonrooms
+Environment=ASPNETCORE_ENVIRONMENT=Production
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

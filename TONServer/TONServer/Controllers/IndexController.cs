@@ -1,6 +1,5 @@
 ﻿using ConvertApiDotNet;
 using Ipfs.Engine;
-using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -9,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TONServer.Components;
 using System.Web;
 using Web;
 
@@ -38,7 +38,7 @@ namespace TONServer
             }
             catch (Exception ex)
             {
-                Helper.Log(ex);
+                ServerLog.Log(ex);
                 return Json(new { r = "error", m = ex.Message });
             }
         }
@@ -111,10 +111,10 @@ namespace TONServer
                                 images.Add(image);
                             }
                         }
-                        catch (Exception ex) { Helper.Log(ex); }
+                        catch (Exception ex) { ServerLog.Log(ex); }
                     }
                 }
-                else Helper.Log(p.Content);
+                else ServerLog.Log(p.Content);
                 var recs = db.Images.Where(x => x.RoomId == room.Id).ToList();
                 foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.Images.Add(image);
                 foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.Images.Remove(rec);

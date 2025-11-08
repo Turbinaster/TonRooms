@@ -1,11 +1,11 @@
 ﻿using ConvertApiDotNet;
-using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using TONServer.Components;
 using Web;
 
 namespace TONServer.Controllers
@@ -38,7 +38,7 @@ namespace TONServer.Controllers
             }
             catch (Exception ex)
             {
-                Helper.Log(ex);
+                ServerLog.Log(ex);
             }
 
             return RedirectToAction("index", "room", new { id = address });
@@ -54,7 +54,7 @@ namespace TONServer.Controllers
             }
             catch (Exception ex)
             {
-                Helper.Log(ex);
+                ServerLog.Log(ex);
                 return Json(new { r = "error", m = ex.Message });
             }
         }
@@ -77,7 +77,7 @@ namespace TONServer.Controllers
                 var incoming = auth ? db.RoomWebs.Where(x => owner.IncomingsList.Contains(x.Id)).Count() : 0;
                 return Json(new { r = "ok", result, items, room, auth, owner, text = Rep.FriendsButtonText(owner, room), incoming });
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
 
         [HttpPost]
@@ -137,10 +137,10 @@ namespace TONServer.Controllers
                                 images.Add(image);
                             }
                         }
-                        catch (Exception ex) { Helper.Log(ex); }
+                        catch (Exception ex) { ServerLog.Log(ex); }
                     }
                 }
-                else Helper.Log(p.Content);
+                else ServerLog.Log(p.Content);
                 var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
                 foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
                 foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
@@ -260,7 +260,7 @@ namespace TONServer.Controllers
                 Rep.Notify(room, owner);
                 return Json(new { r = "ok", text = Rep.FriendsButtonText(owner, room) });
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
 
         [HttpPost]
@@ -271,7 +271,7 @@ namespace TONServer.Controllers
                 var owner = Rep.SessionAddress(db, session);
                 return PartialView("friends", owner);
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
 
         [HttpPost]
@@ -300,7 +300,7 @@ namespace TONServer.Controllers
                 Rep.Notify(room, owner);
                 return PartialView("friends", owner);
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
 
         [HttpPost]
@@ -318,7 +318,7 @@ namespace TONServer.Controllers
                 Rep.Notify(room, owner);
                 return PartialView("friends", owner);
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
 
         [HttpPost]
@@ -329,7 +329,7 @@ namespace TONServer.Controllers
                 var room = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 return PartialView("friends_teleport", room);
             }
-            catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex) { ServerLog.Log(ex); return Json(new { r = "error", m = ex.Message }); }
         }
     }
 }

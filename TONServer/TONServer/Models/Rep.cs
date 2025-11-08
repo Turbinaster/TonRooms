@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using TONServer.Components;
 using Web;
 
 namespace TONServer
@@ -74,7 +75,7 @@ namespace TONServer
                     await client.DisconnectAsync(true);
                 }
             }
-            catch (Exception ex) { Helper.Log(ex); }
+            catch (Exception ex) { ServerLog.Log(ex); }
         }
 
         public static async Task<List<string>> SaveFiles(IFormFileCollection files, IWebHostEnvironment env)
