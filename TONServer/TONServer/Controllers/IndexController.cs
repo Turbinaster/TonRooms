@@ -75,13 +75,22 @@ namespace TONServer
             {
                 var images = new List<Image>();
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
+                LogInformation($"IndexController.GetNft invoked for address '{address}'.");
+                if (string.IsNullOrWhiteSpace(address) || room == null)
+                {
+                    var message = $"Room for address '{address}' was not found.";
+                    LogWarning(message);
+                    return Json(new { r = "error", m = message, images = new List<Image>() });
+                }
+
                 var accountId = await ResolveTonAccountIdAsync(address);
-                JToken json = null;
-                string rawContent = null;
+                TonApiResponse nftResponse = null;
                 if (!string.IsNullOrWhiteSpace(accountId))
                 {
-                    (json, rawContent) = await GetTonApiJsonAsync($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
+                    nftResponse = await GetTonApiJsonAsync($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
                 }
+                var json = nftResponse?.Json;
+                var rawContent = nftResponse?.RawContent;
                 if (json != null && json["nft_items"] != null)
                 {
                     foreach (var item in json["nft_items"])
@@ -117,15 +126,27 @@ namespace TONServer
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
+                    var recs = db.Images.Where(x => x.RoomId == room.Id).ToList();
+                    foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.Images.Add(image);
+                    foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.Images.Remove(rec);
+                    db.SaveChanges();
+                    LogInformation($"Synchronized {images.Count} NFT images for room '{room.Id}' ({address}).");
+                    return Json(new { r = "ok", images = db.Images.Where(x => x.RoomId == room.Id).ToList() });
                 }
-                else if (!string.IsNullOrWhiteSpace(rawContent)) Helper.Log(rawContent);
-                var recs = db.Images.Where(x => x.RoomId == room.Id).ToList();
-                foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.Images.Add(image);
-                foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.Images.Remove(rec);
-                db.SaveChanges();
-                return Json(new { r = "ok", images = db.Images.Where(x => x.RoomId == room.Id).ToList() });
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(rawContent)) Helper.Log(rawContent);
+                    var status = nftResponse?.StatusCode;
+                    var message = $"TON API did not return NFT data for address '{address}' (status {(int?)status} {status}).";
+                    LogWarning(message);
+                    return Json(new { r = "error", m = message, images = db.Images.Where(x => x.RoomId == room.Id).ToList() });
+                }
             }
-            catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+            catch (Exception ex)
+            {
+                LogException(ex, "Unhandled exception while loading NFTs for world index view.");
+                return Json(new { r = "error", m = ex.Message });
+            }
         }
 
         [HttpPost]
