@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -132,6 +133,41 @@ namespace TONServer
             {
                 _Singleton.Sessions[sessionKey] = address;
             }
+        }
+
+        protected static string ResolveTonAccountId(string address)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                return address ?? string.Empty;
+            }
+
+            try
+            {
+                var parser = new Parser
+                {
+                    Timeout = 300000
+                };
+                parser.AddHeader("Authorization", "Bearer " + _Singleton.Api);
+                parser.Go($"https://tonapi.io/v2/address/{address}/parse");
+                var parsed = parser.Json() as JToken;
+                string accountId = parsed?["bounceable"]?["b64url"]?.ToString()
+                    ?? parsed?["non_bounceable"]?["b64url"]?.ToString()
+                    ?? parsed?["raw_form"]?.ToString();
+
+                if (!string.IsNullOrWhiteSpace(accountId))
+                {
+                    return accountId;
+                }
+
+                Helper.Log($"Unable to resolve TON address '{address}'. Response: {parser.Content}");
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+            }
+
+            return address;
         }
     }
 }

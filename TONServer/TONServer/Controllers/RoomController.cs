@@ -89,12 +89,17 @@ namespace TONServer.Controllers
                 string address = "";
                 if (session == null && _Singleton.Development) address = "EQB0zy3wOR35FF1q2j3NsCxOyqzoRYioFroMqvsYEJ7mJ7-6";
                 else address = _Singleton.Sessions.ContainsKey(session) ? _Singleton.Sessions[session] : "";
+                var accountId = ResolveTonAccountId(address);
                 var p = new Parser();
                 //p.Fiddler = true;
                 p.Timeout = 300000;
                 p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                p.Go($"https://tonapi.io/v1/nft/getItemsByOwnerAddress?account={address}");
-                var j = p.Json();
+                dynamic j = null;
+                if (!string.IsNullOrWhiteSpace(accountId))
+                {
+                    p.Go($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
+                    j = p.Json();
+                }
                 var list = new List<string>();
                 if (j != null && j["nft_items"] != null)
                 {

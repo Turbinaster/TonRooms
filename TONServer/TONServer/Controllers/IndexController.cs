@@ -74,10 +74,18 @@ namespace TONServer
             {
                 var images = new List<Image>();
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
-                var p = new Parser();
+                var accountId = ResolveTonAccountId(address);
+                var p = new Parser
+                {
+                    Timeout = 300000
+                };
                 p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                p.Go($"https://tonapi.io/v1/nft/getItemsByOwnerAddress?account={address}");
-                var j = p.Json();
+                dynamic j = null;
+                if (!string.IsNullOrWhiteSpace(accountId))
+                {
+                    p.Go($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
+                    j = p.Json();
+                }
                 if (j != null && j["nft_items"] != null)
                 {
                     foreach (var item in j["nft_items"])
