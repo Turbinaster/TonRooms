@@ -1,14 +1,16 @@
 [Unit]
-Description=TonRooms ASP.NET Core Service
+Description=TonRooms ASP.NET Core service
 After=network.target
 
 [Service]
-WorkingDirectory=/var/www/tonrooms
-ExecStart=/usr/bin/dotnet /var/www/tonrooms/TONServer.dll
+WorkingDirectory=/var/www/tonrooms/publish
+ExecStart=/usr/bin/dotnet /var/www/tonrooms/publish/TONServer.dll
 Restart=always
-RestartSec=10
-SyslogIdentifier=tonrooms
+RestartSec=5
+User=tonrooms
 Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
+Environment="ConnectionStrings__conn1=Server=127.0.0.1,1433;Database=TONServer;User ID=tonrooms;Password=Prizma37;Encrypt=True;TrustServerCertificate=True;"
 StandardOutput=journal
 StandardError=journal
 
