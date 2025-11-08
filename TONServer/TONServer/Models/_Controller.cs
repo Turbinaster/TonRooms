@@ -13,6 +13,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
 namespace TONServer
@@ -25,6 +27,11 @@ namespace TONServer
         public User user;
         public Lang lang;
         public string session;
+
+        private static readonly HttpClient TonApiHttpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromMilliseconds(300000)
+        };
 
         public override void OnActionExecuting(ActionExecutingContext context)
         {
@@ -135,7 +142,7 @@ namespace TONServer
             }
         }
 
-        protected static string ResolveTonAccountId(string address)
+        protected static async Task<string> ResolveTonAccountIdAsync(string address)
         {
             if (string.IsNullOrWhiteSpace(address))
             {
@@ -144,13 +151,7 @@ namespace TONServer
 
             try
             {
-                var parser = new Parser
-                {
-                    Timeout = 300000
-                };
-                parser.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                parser.Go($"https://tonapi.io/v2/address/{address}/parse");
-                var parsed = parser.Json() as JToken;
+                var (parsed, rawContent) = await GetTonApiJsonAsync($"https://tonapi.io/v2/address/{address}/parse");
                 string accountId = parsed?["bounceable"]?["b64url"]?.ToString()
                     ?? parsed?["non_bounceable"]?["b64url"]?.ToString()
                     ?? parsed?["raw_form"]?.ToString();
@@ -160,7 +161,10 @@ namespace TONServer
                     return accountId;
                 }
 
-                Helper.Log($"Unable to resolve TON address '{address}'. Response: {parser.Content}");
+                if (!string.IsNullOrWhiteSpace(rawContent))
+                {
+                    Helper.Log($"Unable to resolve TON address '{address}'. Response: {rawContent}");
+                }
             }
             catch (Exception ex)
             {
@@ -168,6 +172,74 @@ namespace TONServer
             }
 
             return address;
+        }
+
+        protected static async Task<(JToken Json, string RawContent)> GetTonApiJsonAsync(string url)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _Singleton.Api);
+
+                using var response = await TonApiHttpClient.SendAsync(request);
+                var content = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Helper.Log($"TON API request to {url} failed with {(int)response.StatusCode} {response.ReasonPhrase}. Body: {content}");
+                    return (null, content);
+                }
+
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    Helper.Log($"TON API request to {url} returned empty body.");
+                    return (null, content);
+                }
+
+                try
+                {
+                    var json = JToken.Parse(content);
+                    return (json, content);
+                }
+                catch (Exception parseEx)
+                {
+                    Helper.Log($"Failed to parse TON API response for {url}: {content}");
+                    Helper.Log(parseEx);
+                    return (null, content);
+                }
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+                return (null, null);
+            }
+        }
+
+        protected static async Task DownloadFileAsync(string url, string path)
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                using var response = await TonApiHttpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Helper.Log($"Failed to download file from {url}: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    return;
+                }
+
+                await using var stream = await response.Content.ReadAsStreamAsync();
+                await using var fileStream = System.IO.File.Create(path);
+                await stream.CopyToAsync(fileStream);
+            }
+            catch (Exception ex)
+            {
+                Helper.Log(ex);
+            }
         }
     }
 }

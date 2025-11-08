@@ -3,6 +3,7 @@ using Ipfs.Engine;
 using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -74,21 +75,16 @@ namespace TONServer
             {
                 var images = new List<Image>();
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
-                var accountId = ResolveTonAccountId(address);
-                var p = new Parser
-                {
-                    Timeout = 300000
-                };
-                p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                dynamic j = null;
+                var accountId = await ResolveTonAccountIdAsync(address);
+                JToken json = null;
+                string rawContent = null;
                 if (!string.IsNullOrWhiteSpace(accountId))
                 {
-                    p.Go($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
-                    j = p.Json();
+                    (json, rawContent) = await GetTonApiJsonAsync($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
                 }
-                if (j != null && j["nft_items"] != null)
+                if (json != null && json["nft_items"] != null)
                 {
-                    foreach (var item in j["nft_items"])
+                    foreach (var item in json["nft_items"])
                     {
                         try
                         {
@@ -122,7 +118,7 @@ namespace TONServer
                         catch (Exception ex) { Helper.Log(ex); }
                     }
                 }
-                else Helper.Log(p.Content);
+                else if (!string.IsNullOrWhiteSpace(rawContent)) Helper.Log(rawContent);
                 var recs = db.Images.Where(x => x.RoomId == room.Id).ToList();
                 foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.Images.Add(image);
                 foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.Images.Remove(rec);

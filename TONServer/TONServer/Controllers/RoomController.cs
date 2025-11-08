@@ -2,6 +2,7 @@
 using Libs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -89,21 +90,17 @@ namespace TONServer.Controllers
                 string address = "";
                 if (session == null && _Singleton.Development) address = "EQB0zy3wOR35FF1q2j3NsCxOyqzoRYioFroMqvsYEJ7mJ7-6";
                 else address = _Singleton.Sessions.ContainsKey(session) ? _Singleton.Sessions[session] : "";
-                var accountId = ResolveTonAccountId(address);
-                var p = new Parser();
-                //p.Fiddler = true;
-                p.Timeout = 300000;
-                p.AddHeader("Authorization", "Bearer " + _Singleton.Api);
-                dynamic j = null;
+                var accountId = await ResolveTonAccountIdAsync(address);
+                JToken json = null;
+                string rawContent = null;
                 if (!string.IsNullOrWhiteSpace(accountId))
                 {
-                    p.Go($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
-                    j = p.Json();
+                    (json, rawContent) = await GetTonApiJsonAsync($"https://tonapi.io/v2/accounts/{accountId}/nfts?limit=1000&indirect_ownership=true");
                 }
                 var list = new List<string>();
-                if (j != null && j["nft_items"] != null)
+                if (json != null && json["nft_items"] != null)
                 {
-                    foreach (var item in j["nft_items"])
+                    foreach (var item in json["nft_items"])
                     {
                         try
                         {
@@ -130,12 +127,9 @@ namespace TONServer.Controllers
                                         await convert.SaveFileAsync(path);
                                     }
                                 }
-                                else
+                                else if (!System.IO.File.Exists(path))
                                 {
-                                    if (!System.IO.File.Exists(path))
-                                    {
-                                        p.DownloadFile(url, path);
-                                    }
+                                    await DownloadFileAsync(url, path);
                                 }
                                 string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
                                 image.Url = result;
@@ -145,7 +139,7 @@ namespace TONServer.Controllers
                         catch (Exception ex) { Helper.Log(ex); }
                     }
                 }
-                else Helper.Log(p.Content);
+                else if (!string.IsNullOrWhiteSpace(rawContent)) Helper.Log(rawContent);
                 var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
                 foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
                 foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
