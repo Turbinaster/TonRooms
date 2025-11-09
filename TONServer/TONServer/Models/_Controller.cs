@@ -344,22 +344,78 @@ namespace TONServer
 
         private static void EnsureLogFilePath()
         {
-            if (!string.IsNullOrEmpty(_diagnosticLogPath) || string.IsNullOrEmpty(_Singleton.WebRootPath)) return;
-            try
+            if (!string.IsNullOrEmpty(_diagnosticLogPath)) return;
+            lock (LogPathLock)
             {
-                lock (LogPathLock)
+                if (!string.IsNullOrEmpty(_diagnosticLogPath)) return;
+
+                try
                 {
-                    if (!string.IsNullOrEmpty(_diagnosticLogPath)) return;
-                    var directory = Path.Combine(_Singleton.WebRootPath, "logs");
-                    Directory.CreateDirectory(directory);
-                    _diagnosticLogPath = Path.Combine(directory, "tonrooms.log");
-                    LogMessage(LogLevel.Information, $"Diagnostic log file initialised at {_diagnosticLogPath}.");
+                    var resolvedPath = ResolveDiagnosticLogPath();
+                    if (!string.IsNullOrEmpty(resolvedPath))
+                    {
+                        _diagnosticLogPath = resolvedPath;
+                        try
+                        {
+                            var initialLine = $"{DateTime.UtcNow:O} [Information] Diagnostic log file initialised at {_diagnosticLogPath}.";
+                            System.IO.File.AppendAllText(_diagnosticLogPath, initialLine + Environment.NewLine);
+                        }
+                        catch
+                        {
+                            // Swallow IO errors from the initial log line to avoid breaking request processing.
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore failures during path resolution; WriteLogLine will retry on the next log attempt.
                 }
             }
-            catch (Exception ex)
+        }
+
+        private static string ResolveDiagnosticLogPath()
+        {
+            var potentialRoots = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(_Singleton.WebRootPath))
             {
-                LogMessage(LogLevel.Warning, "Unable to initialise diagnostic log directory.", ex);
+                potentialRoots.Add(_Singleton.WebRootPath);
             }
+
+            var baseDirectory = AppContext.BaseDirectory;
+            if (!string.IsNullOrWhiteSpace(baseDirectory))
+            {
+                potentialRoots.Add(Path.Combine(baseDirectory, "wwwroot"));
+                potentialRoots.Add(baseDirectory);
+            }
+
+            var currentDirectory = Directory.GetCurrentDirectory();
+            if (!string.IsNullOrWhiteSpace(currentDirectory))
+            {
+                potentialRoots.Add(Path.Combine(currentDirectory, "wwwroot"));
+                if (!string.Equals(currentDirectory, baseDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    potentialRoots.Add(currentDirectory);
+                }
+            }
+
+            foreach (var root in potentialRoots)
+            {
+                if (string.IsNullOrWhiteSpace(root)) continue;
+
+                try
+                {
+                    var directory = Path.Combine(root, "logs");
+                    Directory.CreateDirectory(directory);
+                    return Path.Combine(directory, "tonrooms.log");
+                }
+                catch
+                {
+                    // Try the next candidate directory if we cannot create or access this one.
+                }
+            }
+
+            return null;
         }
 
         protected static void LogInformation(string message) => LogMessage(LogLevel.Information, message);
@@ -393,7 +449,11 @@ namespace TONServer
 
         private static void WriteLogLine(string line)
         {
-            if (string.IsNullOrEmpty(line) || string.IsNullOrEmpty(_diagnosticLogPath)) return;
+            if (string.IsNullOrEmpty(line)) return;
+
+            EnsureLogFilePath();
+            if (string.IsNullOrEmpty(_diagnosticLogPath)) return;
+
             try
             {
                 lock (LogFileLock)
