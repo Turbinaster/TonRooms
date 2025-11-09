@@ -154,8 +154,11 @@ namespace TONServer
         {
             try
             {
+                LogInformation("GetRooms request received. Fetching rooms and selected images.");
                 var rooms = db.Rooms.ToList();
+                LogInformation($"Loaded {rooms.Count} rooms from database.");
                 var images = db.Images.Where(x => x.Selected).ToList();
+                LogInformation($"Loaded {images.Count} selected images associated with rooms.");
                 return Json(new { r = "ok", rooms, images });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
@@ -184,6 +187,7 @@ namespace TONServer
         {
             try
             {
+                LogInformation($"SetSelection request: address='{address}', image='{TruncateForLog(image)}', selected={selected}, floor={floor}.");
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
                 if (room != null)
                 {
@@ -193,8 +197,11 @@ namespace TONServer
                         rec.Selected = selected;
                         rec.Floor = floor;
                         db.SaveChanges();
+                        LogInformation($"Updated image selection for roomId={room.Id}, image='{TruncateForLog(image)}'. Selected={selected}, floor={floor}.");
                     }
+                    else LogWarning($"SetSelection could not find image '{TruncateForLog(image)}' for roomId={room.Id}.");
                 }
+                else LogWarning($"SetSelection could not find room for address '{address}'.");
                 return Json(new { r = "ok" });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
@@ -205,6 +212,7 @@ namespace TONServer
         {
             try
             {
+                LogInformation($"SetPosition request: address='{address}', image='{TruncateForLog(image)}', x={x}, y={y}, scale={scale}, wall={index}.");
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
                 if (room != null)
                 {
@@ -216,8 +224,11 @@ namespace TONServer
                         rec.Scale = scale;
                         rec.Wall = index;
                         db.SaveChanges();
+                        LogInformation($"Saved position for image '{TruncateForLog(image)}' in roomId={room.Id}: x={x}, y={y}, scale={scale}, wall={index}.");
                     }
+                    else LogWarning($"SetPosition could not find image '{TruncateForLog(image)}' for roomId={room.Id}.");
                 }
+                else LogWarning($"SetPosition could not find room for address '{address}'.");
                 return Json(new { r = "ok" });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }

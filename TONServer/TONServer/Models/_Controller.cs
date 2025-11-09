@@ -407,7 +407,7 @@ namespace TONServer
             }
         }
 
-        private static string TruncateForLog(string value, int maxLength = 2048)
+        protected static string TruncateForLog(string value, int maxLength = 2048)
         {
             if (string.IsNullOrEmpty(value)) return value;
             return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
