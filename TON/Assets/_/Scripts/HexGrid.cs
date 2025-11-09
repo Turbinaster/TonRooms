@@ -101,67 +101,238 @@ public class HexGrid : MonoBehaviour
 
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
+        if (image == null) yield break;
+
         string originalUrl = url;
         string normalizedUrl = NormalizeUrl(url);
-        string mimeFromDataUri = null;
-        bool isDataUri = IsDataUri(normalizedUrl);
-        string extension = ".png";
-        if (isDataUri)
+        if (string.IsNullOrWhiteSpace(normalizedUrl))
         {
-            mimeFromDataUri = ExtractMimeTypeFromDataUri(normalizedUrl);
-            extension = ExtensionFromMime(mimeFromDataUri) ?? extension;
-        }
-        else
-        {
-            extension = DetermineExtension(normalizedUrl) ?? extension;
+            Debug.LogWarning($"Empty NFT url for '{originalUrl}'.");
+            yield break;
         }
 
-        string cachePath = ResolveCachePath(originalUrl, extension);
-        if (!string.IsNullOrEmpty(cachePath) && !File.Exists(cachePath))
+        string extensionHint = DetermineExtension(normalizedUrl);
+
+        if (TryLoadCachedSprite(originalUrl, out var cachedSprite, out var cachedTexture, out var cachedSize))
         {
-            foreach (var candidate in CacheExtensions)
+            ApplySprite(image, cachedSprite, cachedTexture, a, t, cell, calc, walls, originalUrl, cachedSize.x, cachedSize.y);
+            yield break;
+        }
+
+        if (IsDataUri(normalizedUrl))
+        {
+            string mime = ExtractMimeTypeFromDataUri(normalizedUrl);
+            if (TryDecodeDataUri(normalizedUrl, out var data) && data != null && data.Length > 0)
             {
-                if (string.Equals(candidate, extension, StringComparison.OrdinalIgnoreCase)) continue;
-                string altPath = ResolveCachePath(originalUrl, candidate);
-                if (!string.IsNullOrEmpty(altPath) && File.Exists(altPath))
+                bool isSvg = (!string.IsNullOrEmpty(mime) && mime.IndexOf("svg", StringComparison.OrdinalIgnoreCase) >= 0);
+                if (isSvg)
                 {
-                    cachePath = altPath;
-                    extension = candidate;
-                    break;
+                    string svgText = System.Text.Encoding.UTF8.GetString(data);
+                    var sprite = BuildSpriteFromSvg(svgText, out Vector2 svgSize);
+                    if (sprite != null)
+                    {
+                        TryCacheSvg(ResolveCachePath(originalUrl, ".svg"), svgText);
+                        ApplySprite(image, sprite, null, a, t, cell, calc, walls, originalUrl, svgSize.x, svgSize.y);
+                        yield break;
+                    }
+                }
+                else if (TryCreateSpriteFromBytes(data, out var texture, out var sprite, out var size))
+                {
+                    string targetExtension = ExtensionFromMime(mime) ?? extensionHint ?? ".png";
+                    TryCacheBytes(ResolveCachePath(originalUrl, targetExtension), data);
+                    TryCacheTexture(originalUrl, texture, null);
+                    ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, size.x, size.y);
+                    yield break;
                 }
             }
-        }
-        byte[] rawData = null;
-        Sprite sprite = null;
-        Texture2D texture = null;
 
-        if (!string.IsNullOrEmpty(cachePath))
+            Debug.LogWarning($"Unable to decode NFT data URI for '{originalUrl}'.");
+            yield break;
+        }
+
+        if (IsSvgContent(extensionHint, null, normalizedUrl))
         {
+            yield return DownloadSvgSprite(normalizedUrl, originalUrl, image, a, calc, t, cell, walls, null);
+            yield break;
+        }
+
+        yield return DownloadRasterSprite(normalizedUrl, originalUrl, extensionHint, image, a, calc, t, cell, walls);
+    }
+
+    IEnumerator DownloadRasterSprite(string normalizedUrl, string originalUrl, string extensionHint, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls)
+    {
+        string finalUrl = normalizedUrl;
+        bool attemptedHttpsFallback = false;
+
+        while (true)
+        {
+            using (UnityWebRequest textureRequest = UnityWebRequestTexture.GetTexture(finalUrl, false))
+            {
+                textureRequest.timeout = 30;
+                if (finalUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
+                {
+                    textureRequest.certificateHandler = new PermissiveCertificateHandler();
+                }
+
+                yield return textureRequest.SendWebRequest();
+
+                if (textureRequest.result != UnityWebRequest.Result.Success)
+                {
+                    if (!attemptedHttpsFallback && finalUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        finalUrl = "https://" + finalUrl.Substring(7);
+                        attemptedHttpsFallback = true;
+                        continue;
+                    }
+                    Debug.LogWarning($"Failed to download NFT image '{originalUrl}' from '{finalUrl}': {textureRequest.error}");
+                    yield return DownloadRasterWithBuffer(finalUrl, originalUrl, extensionHint, image, a, calc, t, cell, walls);
+                    yield break;
+                }
+
+                var handler = (DownloadHandlerTexture)textureRequest.downloadHandler;
+                Texture2D tex = handler != null ? handler.texture : null;
+
+                if (tex != null && tex.width > 0 && tex.height > 0)
+                {
+                    TryCacheTexture(originalUrl, tex, handler?.data);
+                    var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                    ApplySprite(image, sprite, tex, a, t, cell, calc, walls, originalUrl, tex.width, tex.height);
+                    yield break;
+                }
+
+                string contentType = textureRequest.GetResponseHeader("Content-Type");
+                if (!string.IsNullOrEmpty(contentType) && contentType.IndexOf("svg", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    yield return DownloadSvgSprite(finalUrl, originalUrl, image, a, calc, t, cell, walls, handler?.data);
+                    yield break;
+                }
+
+                byte[] rawData = handler?.data;
+                if (rawData != null && rawData.Length > 0 && TryCreateSpriteFromBytes(rawData, out var texture, out var spriteFromData, out var size))
+                {
+                    string preferredExtension = extensionHint ?? DetermineExtensionFromResponse(null, contentType, finalUrl) ?? ".png";
+                    TryCacheBytes(ResolveCachePath(originalUrl, preferredExtension), rawData);
+                    TryCacheTexture(originalUrl, texture, null);
+                    ApplySprite(image, spriteFromData, texture, a, t, cell, calc, walls, originalUrl, size.x, size.y);
+                    yield break;
+                }
+
+                Debug.LogWarning($"Downloaded NFT image '{originalUrl}' but it did not contain usable texture data.");
+                yield return DownloadRasterWithBuffer(finalUrl, originalUrl, extensionHint, image, a, calc, t, cell, walls);
+                yield break;
+            }
+        }
+    }
+
+    IEnumerator DownloadRasterWithBuffer(string requestUrl, string originalUrl, string extensionHint, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls)
+    {
+        using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
+        {
+            request.timeout = 30;
+            if (requestUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
+            {
+                request.certificateHandler = new PermissiveCertificateHandler();
+            }
+
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"Failed to retrieve NFT bytes '{originalUrl}' from '{requestUrl}': {request.error}");
+                yield break;
+            }
+
+            byte[] data = request.downloadHandler.data;
+            string contentType = request.GetResponseHeader("Content-Type");
+            if (IsSvgContent(extensionHint, contentType, requestUrl))
+            {
+                yield return DownloadSvgSprite(requestUrl, originalUrl, image, a, calc, t, cell, walls, data);
+                yield break;
+            }
+
+            if (data != null && data.Length > 0 && TryCreateSpriteFromBytes(data, out var texture, out var sprite, out var size))
+            {
+                string preferredExtension = DetermineExtensionFromResponse(extensionHint, contentType, requestUrl) ?? ".png";
+                TryCacheBytes(ResolveCachePath(originalUrl, preferredExtension), data);
+                TryCacheTexture(originalUrl, texture, null);
+                ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, size.x, size.y);
+                yield break;
+            }
+
+            Debug.LogWarning($"NFT response for '{originalUrl}' did not contain a supported image format.");
+        }
+    }
+
+    IEnumerator DownloadSvgSprite(string requestUrl, string originalUrl, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, byte[] existingData)
+    {
+        string svgText = null;
+        if (existingData != null && existingData.Length > 0)
+        {
+            svgText = System.Text.Encoding.UTF8.GetString(existingData, 0, existingData.Length);
+        }
+
+        if (string.IsNullOrEmpty(svgText))
+        {
+            using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
+            {
+                request.timeout = 30;
+                if (requestUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
+                {
+                    request.certificateHandler = new PermissiveCertificateHandler();
+                }
+
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning($"Failed to download SVG NFT '{originalUrl}' from '{requestUrl}': {request.error}");
+                    yield break;
+                }
+
+                svgText = request.downloadHandler.text;
+            }
+        }
+
+        if (string.IsNullOrEmpty(svgText))
+        {
+            Debug.LogWarning($"SVG NFT '{originalUrl}' returned no content.");
+            yield break;
+        }
+
+        var sprite = BuildSpriteFromSvg(svgText, out Vector2 svgSize);
+        if (sprite == null)
+        {
+            Debug.LogWarning($"Unable to parse SVG NFT '{originalUrl}'.");
+            yield break;
+        }
+
+        TryCacheSvg(ResolveCachePath(originalUrl, ".svg"), svgText);
+        ApplySprite(image, sprite, null, a, t, cell, calc, walls, originalUrl, svgSize.x, svgSize.y);
+    }
+
+    static bool TryLoadCachedSprite(string originalUrl, out Sprite sprite, out Texture2D texture, out Vector2 size)
+    {
+        sprite = null;
+        texture = null;
+        size = Vector2.zero;
+
+        foreach (var extension in CacheExtensions)
+        {
+            string cachePath = ResolveCachePath(originalUrl, extension);
+            if (string.IsNullOrEmpty(cachePath) || !File.Exists(cachePath)) continue;
+
             try
             {
-                if (File.Exists(cachePath))
+                if (string.Equals(Path.GetExtension(cachePath), ".svg", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (string.Equals(Path.GetExtension(cachePath), ".svg", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string svgText = File.ReadAllText(cachePath, Encoding.UTF8);
-                        sprite = BuildSpriteFromSvg(svgText, out Vector2 svgSize);
-                        texture = null;
-                        rawData = Encoding.UTF8.GetBytes(svgText);
-                        if (sprite != null)
-                        {
-                            ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, svgSize.x, svgSize.y);
-                            yield break;
-                        }
-                    }
-                    else
-                    {
-                        rawData = File.ReadAllBytes(cachePath);
-                        if (TryCreateSprite(rawData, out texture, out sprite))
-                        {
-                            ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, texture.width, texture.height);
-                            yield break;
-                        }
-                    }
+                    string svgText = File.ReadAllText(cachePath, Encoding.UTF8);
+                    sprite = BuildSpriteFromSvg(svgText, out size);
+                    if (sprite != null) return true;
+                }
+                else
+                {
+                    byte[] dataBytes = File.ReadAllBytes(cachePath);
+                    if (TryCreateSpriteFromBytes(dataBytes, out texture, out sprite, out size)) return true;
                 }
             }
             catch (Exception ex)
@@ -170,154 +341,62 @@ public class HexGrid : MonoBehaviour
             }
         }
 
-        if (isDataUri)
-        {
-            if (TryDecodeDataUri(normalizedUrl, out rawData))
-            {
-                if (string.Equals(extension, ".svg", StringComparison.OrdinalIgnoreCase) || (mimeFromDataUri != null && mimeFromDataUri.Contains("svg")))
-                {
-                    string svgText = Encoding.UTF8.GetString(rawData);
-                    sprite = BuildSpriteFromSvg(svgText, out Vector2 svgSize);
-                    if (sprite != null)
-                    {
-                        string svgCachePath = ResolveCachePath(originalUrl, ".svg");
-                        TryCacheSvg(svgCachePath, svgText);
-                        ApplySprite(image, sprite, null, a, t, cell, calc, walls, originalUrl, svgSize.x, svgSize.y);
-                        yield break;
-                    }
-                }
-                else if (TryCreateSprite(rawData, out texture, out sprite))
-                {
-                    string cacheTarget = ResolveCachePath(originalUrl, extension);
-                    TryCacheBytes(cacheTarget, rawData);
-                    ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, texture.width, texture.height);
-                    yield break;
-                }
-            }
-            Debug.LogWarning($"Unable to decode NFT data URI for '{originalUrl}'.");
-            yield break;
-        }
-
-        yield return TryDownloadSprite(normalizedUrl, extension, cachePath, originalUrl, image, a, calc, t, cell, walls);
+        return false;
     }
 
-    IEnumerator TryDownloadSprite(string normalizedUrl, string extension, string cachePath, string originalUrl, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls)
+    static bool TryCreateSpriteFromBytes(byte[] data, out Texture2D texture, out Sprite sprite, out Vector2 size)
     {
-        Sprite sprite = null;
-        Texture2D texture = null;
-        Vector2 svgSize = Vector2.zero;
-        byte[] data = null;
-        string finalUrl = normalizedUrl;
-        bool attemptedHttpsFallback = false;
+        texture = null;
+        sprite = null;
+        size = Vector2.zero;
+        if (data == null || data.Length == 0) return false;
 
-        while (true)
+        try
         {
-            using (UnityWebRequest request = UnityWebRequest.Get(finalUrl))
+            texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, data))
             {
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.timeout = 30;
-                if (finalUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
-                {
-                    request.certificateHandler = new PermissiveCertificateHandler();
-                }
-                yield return request.SendWebRequest();
-
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    if (!attemptedHttpsFallback && finalUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-                    {
-                        finalUrl = "https://" + finalUrl.Substring(7);
-                        attemptedHttpsFallback = true;
-                        continue;
-                    }
-                    Debug.LogWarning($"Failed to download NFT image '{originalUrl}' from '{finalUrl}': {request.error}");
-                    yield break;
-                }
-
-                data = request.downloadHandler.data;
-                string contentType = request.GetResponseHeader("Content-Type");
-                string inferredExtension = DetermineExtensionFromResponse(extension, contentType, finalUrl);
-                string resolvedCachePath = cachePath;
-                if (!string.IsNullOrEmpty(inferredExtension))
-                {
-                    resolvedCachePath = ResolveCachePath(originalUrl, inferredExtension);
-                }
-                bool isSvg = IsSvgContent(inferredExtension, contentType, finalUrl);
-
-                if (isSvg)
-                {
-                    string svgText = Encoding.UTF8.GetString(data, 0, data.Length);
-                    sprite = BuildSpriteFromSvg(svgText, out svgSize);
-                    if (sprite != null)
-                    {
-                        TryCacheSvg(resolvedCachePath, svgText);
-                        ApplySprite(image, sprite, null, a, t, cell, calc, walls, originalUrl, svgSize.x, svgSize.y);
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Unable to tessellate SVG NFT '{originalUrl}'.");
-                    }
-                }
-                else if (TryCreateSprite(data, out texture, out sprite))
-                {
-                    TryCacheBytes(resolvedCachePath, data);
-                    ApplySprite(image, sprite, texture, a, t, cell, calc, walls, originalUrl, texture.width, texture.height);
-                }
-                else
-                {
-                    yield return TryDownloadWithTextureHandler(finalUrl, resolvedCachePath, originalUrl, image, a, calc, t, cell, walls);
-                }
-                yield break;
+                UnityEngine.Object.Destroy(texture);
+                texture = null;
+                return false;
             }
+
+            size = new Vector2(texture.width, texture.height);
+            sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to build texture from NFT image: {ex.Message}");
+            if (texture != null) UnityEngine.Object.Destroy(texture);
+            texture = null;
+            sprite = null;
+            return false;
         }
     }
 
-    IEnumerator TryDownloadWithTextureHandler(string url, string cachePath, string originalUrl, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls)
+    static void TryCacheTexture(string originalUrl, Texture2D texture, byte[] rawData)
     {
-        using (UnityWebRequest textureRequest = UnityWebRequestTexture.GetTexture(url))
+        if (texture == null) return;
+
+        try
         {
-            textureRequest.timeout = 30;
-            if (url.StartsWith("https", StringComparison.OrdinalIgnoreCase))
-            {
-                textureRequest.certificateHandler = new PermissiveCertificateHandler();
-            }
-            yield return textureRequest.SendWebRequest();
-            if (textureRequest.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogWarning($"Failed to decode NFT image '{originalUrl}' with texture handler: {textureRequest.error}");
-                yield break;
-            }
-
-            var handlerTexture = (DownloadHandlerTexture)textureRequest.downloadHandler;
-            var tex = handlerTexture.texture;
-            if (tex == null)
-            {
-                Debug.LogWarning($"NFT image '{originalUrl}' returned no texture data.");
-                yield break;
-            }
-
-            byte[] pngData = null;
-            try
-            {
-                pngData = tex.EncodeToPNG();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"Failed to encode NFT texture '{originalUrl}' to PNG: {ex.Message}");
-            }
-
+            byte[] pngData = texture.EncodeToPNG();
             if (pngData != null && pngData.Length > 0)
             {
-                string pngCachePath = ResolveCachePath(originalUrl, ".png");
-                TryCacheBytes(pngCachePath, pngData);
+                TryCacheBytes(ResolveCachePath(originalUrl, ".png"), pngData);
+                return;
             }
-            else
-            {
-                TryCacheBytes(cachePath, textureRequest.downloadHandler.data);
-            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to encode NFT texture '{originalUrl}' to PNG: {ex.Message}");
+        }
 
-            var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-            ApplySprite(image, sprite, tex, a, t, cell, calc, walls, originalUrl, tex.width, tex.height);
+        if (rawData != null && rawData.Length > 0)
+        {
+            string ext = DetermineExtension(originalUrl) ?? ".png";
+            TryCacheBytes(ResolveCachePath(originalUrl, ext), rawData);
         }
     }
 
@@ -455,33 +534,6 @@ public class HexGrid : MonoBehaviour
         {
             Debug.LogWarning($"Failed to prepare NFT cache path for '{url}': {ex.Message}");
             return null;
-        }
-    }
-
-    static bool TryCreateSprite(byte[] data, out Texture2D texture, out Sprite sprite)
-    {
-        texture = null;
-        sprite = null;
-        if (data == null || data.Length == 0) return false;
-        try
-        {
-            texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!ImageConversion.LoadImage(texture, data))
-            {
-                UnityEngine.Object.Destroy(texture);
-                texture = null;
-                return false;
-            }
-            sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"Failed to build texture from NFT image: {ex.Message}");
-            if (texture != null) UnityEngine.Object.Destroy(texture);
-            texture = null;
-            sprite = null;
-            return false;
         }
     }
 
