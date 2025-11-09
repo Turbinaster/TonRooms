@@ -93,9 +93,26 @@ public class HexGrid : MonoBehaviour
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
         string url1 = url;
-        string ext = Regex.Match(url, @"\.[^\.]+$").Value;
-        string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
-        if (File.Exists(path)) url = $"file://{path}";
+        string ext = string.Empty;
+        try
+        {
+            var uri = new System.Uri(url);
+            ext = Path.GetExtension(uri.AbsolutePath);
+        }
+        catch (System.UriFormatException)
+        {
+            var cleanUrl = url.Split('?')[0];
+            ext = Path.GetExtension(cleanUrl);
+        }
+        if (string.IsNullOrEmpty(ext))
+        {
+            ext = ".png";
+        }
+        string path = Path.Combine(
+            Application.persistentDataPath,
+            url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "").Replace("&", "").Replace("=", "") + ext
+        );
+        if (File.Exists(path)) url = new System.Uri(path).AbsoluteUri;
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
