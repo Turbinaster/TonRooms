@@ -19,6 +19,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace TONServer
@@ -36,6 +37,11 @@ namespace TONServer
         {
             Timeout = TimeSpan.FromMilliseconds(120000)
         };
+        private static readonly HttpClient AssetHttpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+        private static readonly TimeSpan AssetDownloadTimeout = TimeSpan.FromSeconds(30);
         private static readonly object LoggerSync = new object();
         private static readonly object LogFileLock = new object();
         private static readonly object LogPathLock = new object();
@@ -48,6 +54,11 @@ namespace TONServer
             TonApiHttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             TonApiHttpClient.DefaultRequestHeaders.UserAgent.Clear();
             TonApiHttpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("TonRooms", "1.0"));
+
+            AssetHttpClient.DefaultRequestHeaders.Accept.Clear();
+            AssetHttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+            AssetHttpClient.DefaultRequestHeaders.UserAgent.Clear();
+            AssetHttpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("TonRooms", "1.0"));
         }
 
         public override void OnActionExecuting(ActionExecutingContext context)
@@ -258,8 +269,9 @@ namespace TONServer
             }
         }
 
-        protected static async Task DownloadFileAsync(string url, string path)
+        protected static async Task<bool> DownloadFileAsync(string url, string path)
         {
+            var downloadSucceeded = false;
             try
             {
                 var directory = Path.GetDirectoryName(path);
@@ -268,24 +280,42 @@ namespace TONServer
                     Directory.CreateDirectory(directory);
                 }
 
-                using var response = await TonApiHttpClient.GetAsync(url);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                using var cts = new CancellationTokenSource(AssetDownloadTimeout);
+                using var response = await AssetHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 if (!response.IsSuccessStatusCode)
                 {
                     var message = $"Failed to download file from {url}: {(int)response.StatusCode} {response.ReasonPhrase}";
                     LogMessage(LogLevel.Warning, message);
                     Helper.Log(message);
-                    return;
+                    return false;
                 }
 
-                await using var stream = await response.Content.ReadAsStreamAsync();
+                await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
                 await using var fileStream = System.IO.File.Create(path);
-                await stream.CopyToAsync(fileStream);
+                await stream.CopyToAsync(fileStream, 81920, cts.Token);
                 LogMessage(LogLevel.Information, $"Downloaded asset from {url} to {path} ({response.Content.Headers.ContentLength ?? 0} bytes). ");
+                downloadSucceeded = true;
+                return true;
+            }
+            catch (OperationCanceledException oce)
+            {
+                var message = $"Download timed out for {url}: {oce.Message}";
+                LogWarning(message);
+                Helper.Log(message);
             }
             catch (Exception ex)
             {
                 LogException(ex, $"Failed to download file from {url} to {path}.");
             }
+
+            if (!downloadSucceeded && System.IO.File.Exists(path))
+            {
+                try { System.IO.File.Delete(path); }
+                catch { }
+            }
+
+            return false;
         }
 
         protected static void LogException(Exception exception, string contextMessage = null)
