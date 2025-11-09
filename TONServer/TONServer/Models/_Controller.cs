@@ -373,8 +373,33 @@ namespace TONServer
             }
         }
 
+        private static readonly string[] KnownLogPaths = new[]
+        {
+            "/var/www/tonrooms/publish/wwwroot/logs/tonrooms.log",
+            "/var/www/tonrooms/wwwroot/logs/tonrooms.log"
+        };
+
         private static string ResolveDiagnosticLogPath()
         {
+            foreach (var explicitPath in KnownLogPaths)
+            {
+                if (string.IsNullOrWhiteSpace(explicitPath)) continue;
+
+                try
+                {
+                    var directory = Path.GetDirectoryName(explicitPath);
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                        return explicitPath;
+                    }
+                }
+                catch
+                {
+                    // Ignore and fall back to dynamic resolution below.
+                }
+            }
+
             var potentialRoots = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(_Singleton.WebRootPath))
