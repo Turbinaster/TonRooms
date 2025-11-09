@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.Networking;
 
 public class DragImage : MonoBehaviour, IPointerClickHandler, IDragHandler, IPointerEnterHandler, IPointerExitHandler
 {
@@ -59,7 +60,8 @@ public class DragImage : MonoBehaviour, IPointerClickHandler, IDragHandler, IPoi
             string x = rectTransform.anchoredPosition.x.ToString().Replace(",", ".");
             string y = rectTransform.anchoredPosition.y.ToString().Replace(",", ".");
             string s = rectTransform.localScale.x.ToString().Replace(",", ".");
-            await Helper.Post("http://45.132.107.107/index/SetPosition", $"address={PlayerPrefs.GetString("address")}&image={url}&x={x}&y={y}&scale={s}&index={index}");
+            string encodedUrl = UnityWebRequest.EscapeURL(url);
+            await Helper.Post("http://45.132.107.107/index/SetPosition", $"address={PlayerPrefs.GetString("address")}&image={encodedUrl}&x={x}&y={y}&scale={s}&index={index}");
         }
     }
 

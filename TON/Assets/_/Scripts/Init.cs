@@ -5,6 +5,7 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Networking;
 
 public class Init : MonoBehaviour
 {
@@ -113,7 +114,7 @@ public class Init : MonoBehaviour
 
     public async void SaveSelection()
     {
-        var images = NFTCollection.transform.GetComponentsInChildren<SelectImage>().Where(x => x.selected).Select(x => x.url).ToList();
+        var images = NFTCollection.transform.GetComponentsInChildren<SelectImage>().Where(x => x.selected).Select(x => UnityWebRequest.EscapeURL(x.url)).ToList();
         CloseNftCollection();
         await Helper.Post("http://45.132.107.107/index/SaveSelection", $"address={PlayerPrefs.GetString("address")}&images={string.Join("|", images)}");
     }
@@ -146,7 +147,8 @@ public class Init : MonoBehaviour
     public async void PlaceNft()
     {
         var si = SelectedImage.GetComponent<SelectImage>();
-        await Helper.Post("http://45.132.107.107/index/SetSelection", $"address={PlayerPrefs.GetString("address")}&image={si.url}&selected=true&floor={Player.Floor()}");
+        string encodedUrl = UnityWebRequest.EscapeURL(si.url);
+        await Helper.Post("http://45.132.107.107/index/SetSelection", $"address={PlayerPrefs.GetString("address")}&image={encodedUrl}&selected=true&floor={Player.Floor()}");
         ButtonRemoveNft.SetActive(true);
         ButtonPlaceNft.SetActive(false);
         SelectedImage.GetComponent<Image>().color = new Color32(0, 0, 0, 100);
@@ -157,7 +159,8 @@ public class Init : MonoBehaviour
     public async void RemoveNft()
     {
         var si = SelectedImage.GetComponent<SelectImage>();
-        await Helper.Post("http://45.132.107.107/index/SetSelection", $"address={PlayerPrefs.GetString("address")}&image={si.url}&selected=false");
+        string encodedUrl = UnityWebRequest.EscapeURL(si.url);
+        await Helper.Post("http://45.132.107.107/index/SetSelection", $"address={PlayerPrefs.GetString("address")}&image={encodedUrl}&selected=false");
         ButtonRemoveNft.SetActive(false);
         ButtonPlaceNft.SetActive(true);
         SelectedImage.GetComponent<Image>().color = new Color32(0, 0, 0, 30);

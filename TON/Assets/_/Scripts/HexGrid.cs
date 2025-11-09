@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TMPro;
 using Unity.VectorGraphics;
@@ -108,25 +107,94 @@ public class HexGrid : MonoBehaviour
         {
             ext = ".png";
         }
-        string path = Path.Combine(
-            Application.persistentDataPath,
-            url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "").Replace("&", "").Replace("=", "") + ext
-        );
-        if (File.Exists(path)) url = new System.Uri(path).AbsoluteUri;
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success)
-            Debug.Log(request.error);
-        else
+
+        string path = Path.Combine(Application.persistentDataPath, BuildCacheFileName(url1, ext));
+
+        if (TryLoadCachedTexture(path, image, a, calc, t, cell, walls, url1))
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-
-            if (a != null) a();
-
-            if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, url1);
+            yield break;
         }
+
+        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
+        {
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log(request.error);
+                yield break;
+            }
+
+            var data = request.downloadHandler.data;
+            if (data != null && data.Length > 0)
+            {
+                try
+                {
+                    File.WriteAllBytes(path, data);
+                }
+                catch (IOException ioEx)
+                {
+                    Debug.LogError($"Failed to cache image '{url1}' to '{path}': {ioEx.Message}");
+                }
+            }
+
+            var tex = DownloadHandlerTexture.GetContent(request);
+            ApplyTexture(tex, image, a, calc, t, cell, walls, url1);
+        }
+    }
+
+    private string BuildCacheFileName(string url, string ext)
+    {
+        if (string.IsNullOrEmpty(url)) url = string.Empty;
+        using (var sha = System.Security.Cryptography.SHA256.Create())
+        {
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(url));
+            var sb = new StringBuilder(bytes.Length * 2);
+            for (int i = 0; i < bytes.Length; i++) sb.Append(bytes[i].ToString("x2"));
+            return sb.ToString() + ext;
+        }
+    }
+
+    private bool TryLoadCachedTexture(string path, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string originalUrl)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            var data = File.ReadAllBytes(path);
+            if (data == null || data.Length == 0)
+            {
+                File.Delete(path);
+                return false;
+            }
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(tex, data))
+            {
+                UnityEngine.Object.Destroy(tex);
+                File.Delete(path);
+                return false;
+            }
+
+            ApplyTexture(tex, image, a, calc, t, cell, walls, originalUrl);
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Failed to load cached image '{path}': {ex.Message}");
+            try { File.Delete(path); }
+            catch { }
+        }
+        return false;
+    }
+
+    private void ApplyTexture(Texture2D tex, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string originalUrl)
+    {
+        if (tex == null || image == null) return;
+
+        image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+
+        if (a != null) a();
+
+        if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, originalUrl);
     }
 
     IEnumerator DownloadSVG(string url, SVGImage image, RectTransform t, HexCell cell)
@@ -202,7 +270,8 @@ public class HexGrid : MonoBehaviour
                 t.localPosition = new Vector3(w, h, 0);
                 t.anchoredPosition = new Vector2(w, h);
                 t.localEulerAngles = Vector3.zero;
-                await Helper.Post("http://45.132.107.107/index/SetPosition", $"address={cell.coordinates.address}&image={url}&x={w.ToString().Replace(",", ".")}&y={h.ToString().Replace(",", ".")}&scale={1}&index={cell.index}");
+                string encodedUrl = UnityWebRequest.EscapeURL(url);
+                await Helper.Post("http://45.132.107.107/index/SetPosition", $"address={cell.coordinates.address}&image={encodedUrl}&x={w.ToString().Replace(",", ".")}&y={h.ToString().Replace(",", ".")}&scale={1}&index={cell.index}");
             }
         }
     }
