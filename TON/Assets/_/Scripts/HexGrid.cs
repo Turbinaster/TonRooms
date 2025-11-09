@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -93,16 +94,73 @@ public class HexGrid : MonoBehaviour
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
         string url1 = url;
-        string ext = Regex.Match(url, @"\.[^\.]+$").Value;
-        string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
-        if (File.Exists(path)) url = $"file://{path}";
+        string ext = ".png";
+        string safeName = Regex.Replace(url, "[^A-Za-z0-9]", "");
+        if (safeName.Length > 80)
+        {
+            safeName = safeName.Substring(0, 80);
+        }
+        if (string.IsNullOrEmpty(safeName))
+        {
+            safeName = Guid.NewGuid().ToString("N");
+        }
+
+        try
+        {
+            var uri = new Uri(url);
+            var pathExt = Path.GetExtension(uri.AbsolutePath);
+            if (!string.IsNullOrEmpty(pathExt))
+            {
+                ext = pathExt.ToLowerInvariant();
+            }
+        }
+        catch
+        {
+            var match = Regex.Match(url, @"\.([A-Za-z0-9]+)(?:\?|$)");
+            if (match.Success)
+            {
+                ext = "." + match.Groups[1].Value.ToLowerInvariant();
+            }
+        }
+
+        string path = Path.Combine(Application.persistentDataPath, safeName + ext);
+        string directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        bool cacheAvailable = false;
+        try
+        {
+            if (File.Exists(path))
+            {
+                cacheAvailable = true;
+                url = $"file://{path}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to read NFT cache file '{path}': {ex.Message}");
+        }
+
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
             Debug.Log(request.error);
         else
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
+            if (!cacheAvailable)
+            {
+                try
+                {
+                    File.WriteAllBytes(path, request.downloadHandler.data);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Failed to cache NFT image '{url1}' to '{path}': {ex.Message}");
+                }
+            }
             var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
             image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
