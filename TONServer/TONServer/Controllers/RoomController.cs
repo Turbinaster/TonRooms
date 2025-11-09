@@ -144,15 +144,17 @@ namespace TONServer.Controllers
                             string file = BuildAssetFileName(uri, out requiresSvgConversion);
                             string path = Path.Combine(_Singleton.WebRootPath, "files", file);
 
+                            var assetReady = System.IO.File.Exists(path);
                             if (requiresSvgConversion)
                             {
-                                if (!System.IO.File.Exists(path))
+                                if (!assetReady)
                                 {
                                     try
                                     {
                                         var convertApi = new ConvertApi("E9GpCfXSdIfFw81b");
                                         var convert = await convertApi.ConvertAsync("svg", "png", new ConvertApiFileParam("File", url));
                                         await convert.SaveFileAsync(path);
+                                        assetReady = System.IO.File.Exists(path);
                                     }
                                     catch (Exception svgEx)
                                     {
@@ -161,9 +163,21 @@ namespace TONServer.Controllers
                                     }
                                 }
                             }
-                            else if (!System.IO.File.Exists(path))
+                            else if (!assetReady)
                             {
-                                await DownloadFileAsync(url, path);
+                                var downloaded = await DownloadFileAsync(url, path);
+                                if (!downloaded)
+                                {
+                                    LogWarning($"Skipping NFT image because download failed: '{url}'.");
+                                    continue;
+                                }
+                                assetReady = System.IO.File.Exists(path);
+                            }
+
+                            if (!assetReady)
+                            {
+                                LogWarning($"NFT image was not stored locally after processing URL '{url}'.");
+                                continue;
                             }
 
                             string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
