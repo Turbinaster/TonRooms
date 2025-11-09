@@ -93,6 +93,7 @@ public class HexGrid : MonoBehaviour
     {
         string url1 = url;
         string ext = string.Empty;
+        Debug.Log($"[HexGrid] DownloadImage start url={url1} target={(image != null ? image.name : "null")} calc={calc}");
         try
         {
             var uri = new System.Uri(url);
@@ -109,18 +110,21 @@ public class HexGrid : MonoBehaviour
         }
 
         string path = Path.Combine(Application.persistentDataPath, BuildCacheFileName(url1, ext));
+        Debug.Log($"[HexGrid] DownloadImage cache path={path}");
 
         if (TryLoadCachedTexture(path, image, a, calc, t, cell, walls, url1))
         {
+            Debug.Log($"[HexGrid] DownloadImage cache hit url={url1}");
             yield break;
         }
 
         using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
         {
+            Debug.Log($"[HexGrid] DownloadImage request sending url={url1}");
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log(request.error);
+                Debug.LogError($"[HexGrid] DownloadImage failed url={url1} error={request.error}");
                 yield break;
             }
 
@@ -130,6 +134,7 @@ public class HexGrid : MonoBehaviour
                 try
                 {
                     File.WriteAllBytes(path, data);
+                    Debug.Log($"[HexGrid] DownloadImage cached url={url1} bytes={data.Length}");
                 }
                 catch (IOException ioEx)
                 {
@@ -138,6 +143,10 @@ public class HexGrid : MonoBehaviour
             }
 
             var tex = DownloadHandlerTexture.GetContent(request);
+            if (tex != null)
+            {
+                Debug.Log($"[HexGrid] DownloadImage download complete url={url1} size={tex.width}x{tex.height}");
+            }
             ApplyTexture(tex, image, a, calc, t, cell, walls, url1);
         }
     }
@@ -162,6 +171,7 @@ public class HexGrid : MonoBehaviour
             var data = File.ReadAllBytes(path);
             if (data == null || data.Length == 0)
             {
+                Debug.LogWarning($"[HexGrid] Cached texture empty deleting path={path}");
                 File.Delete(path);
                 return false;
             }
@@ -169,11 +179,13 @@ public class HexGrid : MonoBehaviour
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!ImageConversion.LoadImage(tex, data))
             {
+                Debug.LogWarning($"[HexGrid] Cached texture invalid deleting path={path}");
                 UnityEngine.Object.Destroy(tex);
                 File.Delete(path);
                 return false;
             }
 
+            Debug.Log($"[HexGrid] Cached texture loaded url={originalUrl} size={tex.width}x{tex.height}");
             ApplyTexture(tex, image, a, calc, t, cell, walls, originalUrl);
             return true;
         }
@@ -190,6 +202,7 @@ public class HexGrid : MonoBehaviour
     {
         if (tex == null || image == null) return;
 
+        Debug.Log($"[HexGrid] ApplyTexture url={originalUrl} image={(image != null ? image.name : "null")} size={tex.width}x{tex.height} calc={calc}");
         image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
         if (a != null) a();
@@ -232,6 +245,7 @@ public class HexGrid : MonoBehaviour
         //Øèðèíà è âûñîòà êàðòèíêè
         var w = width / 1000;
         var h = height / 1000;
+        Debug.Log($"[HexGrid] CalcSize url={url} origSize={width}x{height} normalized={w}x{h} calc={calc} cell={cell.coordinates.ToStringOnSeparateLines()}");
         if (w < 1) { var delta = w / h; w = 1; h = w / delta; }
         if (h < 1) { var delta = h / w; h = 1; w = h / delta; }
         t.sizeDelta = new Vector2(w, h);
@@ -271,7 +285,12 @@ public class HexGrid : MonoBehaviour
                 t.anchoredPosition = new Vector2(w, h);
                 t.localEulerAngles = Vector3.zero;
                 string encodedUrl = UnityWebRequest.EscapeURL(url);
+                Debug.Log($"[HexGrid] CalcSize auto-set url={url} wall={cell.index} pos=({w},{h}) scale=1");
                 await Helper.Post("http://45.132.107.107/index/SetPosition", $"address={cell.coordinates.address}&image={encodedUrl}&x={w.ToString().Replace(",", ".")}&y={h.ToString().Replace(",", ".")}&scale={1}&index={cell.index}");
+            }
+            else
+            {
+                Debug.LogWarning($"[HexGrid] CalcSize wall index overflow url={url} index={cell.index} walls={walls.Count}");
             }
         }
     }
@@ -364,6 +383,7 @@ public class HexGrid : MonoBehaviour
         var walls_o = cell.transform.Find("Walls");
         if (floor > 0 && cell.floors >= floor) walls_o = cell.transform.Find($"Floor_{floor}").Find("Walls");
         foreach (Transform tr in walls_o.transform) if (tr.tag == "wall") walls.Add(tr);
+        Debug.Log($"[HexGrid] AddNft url={url} cell={cell.coordinates.ToStringOnSeparateLines()} floor={floor} wallIndex={index} initial=({ix},{iy}) scale={iscale}");
         var img_o = new GameObject("nft");
         var t = img_o.AddComponent<RectTransform>();
         t.transform.SetParent(walls[index]);
@@ -391,9 +411,11 @@ public class HexGrid : MonoBehaviour
             di.url = url;
             di.index = index;
             di.walls = walls;
+            Debug.Log($"[HexGrid] AddNft DragImage enabled url={url}");
         }
 
         var image = img_o.AddComponent<Image>();
+        Debug.Log($"[HexGrid] AddNft start download url={url} calc={calc}");
         StartCoroutine(DownloadImage(url, image, null, calc, t, cell, walls));
     }
 
@@ -401,6 +423,7 @@ public class HexGrid : MonoBehaviour
     public async void GetRooms()
     {
         var j = await Helper.Post("http://45.132.107.107/index/GetRooms", $"");
+        Debug.Log($"[HexGrid] GetRooms start total={j["rooms"].Count()}");
         foreach (var item in j["rooms"])
         {
             int x = (int)item["x"];
@@ -408,6 +431,7 @@ public class HexGrid : MonoBehaviour
             int z = (int)item["z"];
             string address = item["address"].ToString();
             var cell = cells.FirstOrDefault(q => q.coordinates.x == x && q.coordinates.y == y && q.coordinates.z == z);
+            Debug.Log($"[HexGrid] GetRooms room x={x} y={y} z={z} address={address}");
             ClearRoom(cell);
             cell.coordinates.address = address;
 
@@ -450,7 +474,11 @@ public class HexGrid : MonoBehaviour
                     float iscale = (float)image["scale"];
                     int index = (int)image["wall"];
                     int floor = (int)image["floor"];
-                    if (!string.IsNullOrEmpty(url)) AddNft(url, cell, ix, iy, iscale, index, floor);
+                    if (!string.IsNullOrEmpty(url))
+                    {
+                        Debug.Log($"[HexGrid] GetRooms add image room={id} url={url} coords=({ix},{iy}) scale={iscale} wall={index} floor={floor}");
+                        AddNft(url, cell, ix, iy, iscale, index, floor);
+                    }
                 }
             }
         }

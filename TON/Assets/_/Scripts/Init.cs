@@ -148,11 +148,13 @@ public class Init : MonoBehaviour
     {
         var si = SelectedImage.GetComponent<SelectImage>();
         string encodedUrl = UnityWebRequest.EscapeURL(si.url);
+        Debug.Log($"[Init] PlaceNft address={PlayerPrefs.GetString("address")}, url={si.url}, encoded={encodedUrl}, floor={Player.Floor()}");
         await Helper.Post("http://45.132.107.107/index/SetSelection", $"address={PlayerPrefs.GetString("address")}&image={encodedUrl}&selected=true&floor={Player.Floor()}");
         ButtonRemoveNft.SetActive(true);
         ButtonPlaceNft.SetActive(false);
         SelectedImage.GetComponent<Image>().color = new Color32(0, 0, 0, 100);
         si.selected = true;
+        Debug.Log($"[Init] PlaceNft completed selection url={si.url}, refreshing rooms");
         HexGrid.GetRooms();
     }
 
