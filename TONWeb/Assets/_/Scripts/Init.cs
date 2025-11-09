@@ -81,21 +81,50 @@ public class Init : MonoBehaviour
 
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
-        else
+        using (var request = UnityWebRequest.Get(url))
         {
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-
-            //if (t != null)
+            request.downloadHandler = new DownloadHandlerBuffer();
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                //Ўирина и высота картинки
-                float w = tex.width / 1000f;
-                float h = tex.height / 1000f;
-                if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
-                if (h < 1) { float delta = (float)tex.height / (float)tex.width; h = 1; w = h / delta; }
+                Debug.Log(request.error);
+                yield break;
+            }
+
+            var data = request.downloadHandler.data;
+            if (data == null || data.Length == 0)
+            {
+                Debug.LogError($"Empty image data received for url {url}");
+                yield break;
+            }
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(data))
+            {
+                Debug.LogError($"Unable to decode image data from url {url}");
+                yield break;
+            }
+
+            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+            image.preserveAspect = true;
+            image.color = Color.white;
+
+            if (t != null)
+            {
+                float w = tex.width / 500f;
+                float h = tex.height / 500f;
+                if (w < 1)
+                {
+                    float delta = (float)tex.width / tex.height;
+                    w = 1;
+                    h = w / delta;
+                }
+                if (h < 1)
+                {
+                    float delta = (float)tex.height / tex.width;
+                    h = 1;
+                    w = h / delta;
+                }
                 t.sizeDelta = new Vector2(w, h);
             }
         }
@@ -103,13 +132,31 @@ public class Init : MonoBehaviour
 
     IEnumerator DownloadImage(string url, ProceduralImage image)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
-        else
+        using (var request = UnityWebRequest.Get(url))
         {
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log(request.error);
+                yield break;
+            }
+
+            var data = request.downloadHandler.data;
+            if (data == null || data.Length == 0)
+            {
+                Debug.LogError($"Empty image data received for url {url}");
+                yield break;
+            }
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(data))
+            {
+                Debug.LogError($"Unable to decode image data from url {url}");
+                yield break;
+            }
+
+            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
         }
     }
 
