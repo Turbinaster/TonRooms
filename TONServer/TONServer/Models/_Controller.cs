@@ -119,7 +119,23 @@ namespace TONServer
 
         public static string GetLeftPart(HttpRequest request)
         {
-            return $"{request.Scheme}://{request.Host.Value}";
+            if (request == null) return string.Empty;
+
+            string host = request.Host.Value;
+            if (request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost) && forwardedHost.Count > 0)
+            {
+                var candidate = forwardedHost[0]?.Split(',')?[0]?.Trim();
+                if (!string.IsNullOrWhiteSpace(candidate)) host = candidate;
+            }
+
+            string scheme = request.Scheme;
+            if (request.Headers.TryGetValue("X-Forwarded-Proto", out var forwardedProto) && forwardedProto.Count > 0)
+            {
+                var proto = forwardedProto[0]?.Split(',')?[0]?.Trim();
+                if (!string.IsNullOrWhiteSpace(proto)) scheme = proto;
+            }
+
+            return $"{scheme}://{host}";
         }
 
         protected string RenderPartialViewToString(string viewName, object model = null)
