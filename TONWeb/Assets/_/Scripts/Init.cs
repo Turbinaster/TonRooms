@@ -79,9 +79,27 @@ public class Init : MonoBehaviour
         }
     }
 
+    string NormalizeUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return url;
+
+        const string roomsHost = "http://rooms.worldofton.ru/";
+        if (url.StartsWith(roomsHost))
+        {
+            return "https://" + url.Substring("http://".Length);
+        }
+
+        if (url.StartsWith("//"))
+        {
+            return "https:" + url;
+        }
+
+        return url;
+    }
+
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(NormalizeUrl(url));
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
         else
@@ -91,7 +109,7 @@ public class Init : MonoBehaviour
 
             //if (t != null)
             {
-                //Ўирина и высота картинки
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(NormalizeUrl(url));
                 float w = tex.width / 1000f;
                 float h = tex.height / 1000f;
                 if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
