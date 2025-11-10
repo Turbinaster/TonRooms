@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -91,29 +92,150 @@ public class HexGrid : MonoBehaviour
     #region nft
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
-        string originalUrl = url;
-        string resolvedUrl = ResolveNftUrl(url);
-        if (string.IsNullOrEmpty(resolvedUrl))
+        if (image == null)
         {
-            Debug.LogWarning($"[HexGrid] DownloadImage missing URL original='{originalUrl}'");
             yield break;
         }
-        if (resolvedUrl != originalUrl)
+
+        string originalUrl = url;
+        var attempted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidate in BuildUrlCandidates(url))
         {
-            Debug.Log($"[HexGrid] DownloadImage normalized url from '{originalUrl}' to '{resolvedUrl}'");
+            if (string.IsNullOrEmpty(candidate))
+            {
+                continue;
+            }
+
+            if (!attempted.Add(candidate))
+            {
+                continue;
+            }
+
+            bool succeeded = false;
+            yield return DownloadImageAttempt(candidate, originalUrl, image, a, calc, t, cell, walls, success => succeeded = success);
+            if (succeeded)
+            {
+                yield break;
+            }
         }
+
+        Debug.LogError($"[HexGrid] DownloadImage exhausted {attempted.Count} url variants for original='{originalUrl}'");
+    }
+
+    private IEnumerable<string> BuildUrlCandidates(string url)
+    {
+        if (!string.IsNullOrEmpty(url))
+        {
+            yield return url;
+        }
+
+        var resolved = ResolveNftUrl(url);
+        if (!string.IsNullOrEmpty(resolved) && resolved != url)
+        {
+            Debug.Log($"[HexGrid] DownloadImage normalized url from '{url}' to '{resolved}'");
+            yield return resolved;
+        }
+
+        var baseForParsing = string.IsNullOrEmpty(resolved) ? url : resolved;
+        if (Uri.TryCreate(baseForParsing, UriKind.Absolute, out var uri))
+        {
+            var absoluteEscaped = uri.GetComponents(UriComponents.AbsoluteUri, UriFormat.UriEscaped);
+            if (!string.IsNullOrEmpty(absoluteEscaped))
+            {
+                yield return absoluteEscaped;
+            }
+
+            var schemeAndPath = uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
+            var normalizedQuery = NormalizeQuery(uri.Query);
+            if (!string.IsNullOrEmpty(schemeAndPath))
+            {
+                yield return string.IsNullOrEmpty(normalizedQuery) ? schemeAndPath : $"{schemeAndPath}?{normalizedQuery}";
+            }
+
+            var escapeUriString = Uri.EscapeUriString(uri.ToString());
+            if (!string.IsNullOrEmpty(escapeUriString))
+            {
+                yield return escapeUriString;
+            }
+
+            if (!string.IsNullOrEmpty(baseForParsing) && baseForParsing.Contains(" "))
+            {
+                yield return baseForParsing.Replace(" ", "%20");
+            }
+        }
+        else if (!string.IsNullOrEmpty(baseForParsing) && baseForParsing.Contains(" "))
+        {
+            yield return baseForParsing.Replace(" ", "%20");
+        }
+    }
+
+    private string NormalizeQuery(string query)
+    {
+        if (string.IsNullOrEmpty(query))
+        {
+            return string.Empty;
+        }
+
+        if (query.StartsWith("?"))
+        {
+            query = query.Substring(1);
+        }
+
+        if (string.IsNullOrEmpty(query))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        var segments = query.Split('&');
+        bool first = true;
+        foreach (var segment in segments)
+        {
+            if (string.IsNullOrEmpty(segment))
+            {
+                continue;
+            }
+
+            if (!first)
+            {
+                builder.Append('&');
+            }
+            first = false;
+
+            var kvp = segment.Split(new[] { '=' }, 2);
+            string key = kvp.Length > 0 ? Uri.EscapeDataString(Uri.UnescapeDataString(kvp[0])) : string.Empty;
+            builder.Append(key);
+            if (kvp.Length == 2)
+            {
+                builder.Append('=');
+                builder.Append(Uri.EscapeDataString(Uri.UnescapeDataString(kvp[1])));
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private IEnumerator DownloadImageAttempt(string resolvedUrl, string originalUrl, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, System.Action<bool> completion)
+    {
+        if (image == null)
+        {
+            completion(false);
+            yield break;
+        }
+
         string ext = string.Empty;
-        Debug.Log($"[HexGrid] DownloadImage start url={resolvedUrl} target={(image != null ? image.name : "null")} calc={calc}");
+        Debug.Log($"[HexGrid] DownloadImage attempt url={resolvedUrl} original='{originalUrl}' calc={calc}");
         try
         {
-            var uri = new System.Uri(resolvedUrl);
+            var uri = new Uri(resolvedUrl);
             ext = Path.GetExtension(uri.AbsolutePath);
         }
-        catch (System.UriFormatException)
+        catch (UriFormatException)
         {
             var cleanUrl = resolvedUrl.Split('?')[0];
             ext = Path.GetExtension(cleanUrl);
         }
+
         if (string.IsNullOrEmpty(ext))
         {
             ext = ".png";
@@ -125,6 +247,7 @@ public class HexGrid : MonoBehaviour
         if (TryLoadCachedTexture(path, image, a, calc, t, cell, walls, resolvedUrl, originalUrl))
         {
             Debug.Log($"[HexGrid] DownloadImage cache hit url={resolvedUrl}");
+            completion(true);
             yield break;
         }
 
@@ -134,7 +257,8 @@ public class HexGrid : MonoBehaviour
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"[HexGrid] DownloadImage failed url={resolvedUrl} (original='{originalUrl}') error={request.error}");
+                Debug.LogWarning($"[HexGrid] DownloadImage failed url={resolvedUrl} (original='{originalUrl}') error={request.error}");
+                completion(false);
                 yield break;
             }
 
@@ -153,11 +277,16 @@ public class HexGrid : MonoBehaviour
             }
 
             var tex = DownloadHandlerTexture.GetContent(request);
-            if (tex != null)
+            if (tex == null)
             {
-                Debug.Log($"[HexGrid] DownloadImage download complete url={resolvedUrl} size={tex.width}x{tex.height}");
+                Debug.LogWarning($"[HexGrid] DownloadImage received null texture url={resolvedUrl}");
+                completion(false);
+                yield break;
             }
+
+            Debug.Log($"[HexGrid] DownloadImage download complete url={resolvedUrl} size={tex.width}x{tex.height}");
             ApplyTexture(tex, image, a, calc, t, cell, walls, resolvedUrl, originalUrl);
+            completion(true);
         }
     }
 
