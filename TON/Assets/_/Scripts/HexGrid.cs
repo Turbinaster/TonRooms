@@ -91,17 +91,27 @@ public class HexGrid : MonoBehaviour
     #region nft
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
-        string url1 = url;
+        string originalUrl = url;
+        string resolvedUrl = ResolveNftUrl(url);
+        if (string.IsNullOrEmpty(resolvedUrl))
+        {
+            Debug.LogWarning($"[HexGrid] DownloadImage missing URL original='{originalUrl}'");
+            yield break;
+        }
+        if (resolvedUrl != originalUrl)
+        {
+            Debug.Log($"[HexGrid] DownloadImage normalized url from '{originalUrl}' to '{resolvedUrl}'");
+        }
         string ext = string.Empty;
-        Debug.Log($"[HexGrid] DownloadImage start url={url1} target={(image != null ? image.name : "null")} calc={calc}");
+        Debug.Log($"[HexGrid] DownloadImage start url={resolvedUrl} target={(image != null ? image.name : "null")} calc={calc}");
         try
         {
-            var uri = new System.Uri(url);
+            var uri = new System.Uri(resolvedUrl);
             ext = Path.GetExtension(uri.AbsolutePath);
         }
         catch (System.UriFormatException)
         {
-            var cleanUrl = url.Split('?')[0];
+            var cleanUrl = resolvedUrl.Split('?')[0];
             ext = Path.GetExtension(cleanUrl);
         }
         if (string.IsNullOrEmpty(ext))
@@ -109,22 +119,22 @@ public class HexGrid : MonoBehaviour
             ext = ".png";
         }
 
-        string path = Path.Combine(Application.persistentDataPath, BuildCacheFileName(url1, ext));
+        string path = Path.Combine(Application.persistentDataPath, BuildCacheFileName(resolvedUrl, ext));
         Debug.Log($"[HexGrid] DownloadImage cache path={path}");
 
-        if (TryLoadCachedTexture(path, image, a, calc, t, cell, walls, url1))
+        if (TryLoadCachedTexture(path, image, a, calc, t, cell, walls, resolvedUrl, originalUrl))
         {
-            Debug.Log($"[HexGrid] DownloadImage cache hit url={url1}");
+            Debug.Log($"[HexGrid] DownloadImage cache hit url={resolvedUrl}");
             yield break;
         }
 
-        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
+        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(resolvedUrl))
         {
-            Debug.Log($"[HexGrid] DownloadImage request sending url={url1}");
+            Debug.Log($"[HexGrid] DownloadImage request sending url={resolvedUrl}");
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"[HexGrid] DownloadImage failed url={url1} error={request.error}");
+                Debug.LogError($"[HexGrid] DownloadImage failed url={resolvedUrl} (original='{originalUrl}') error={request.error}");
                 yield break;
             }
 
@@ -134,20 +144,20 @@ public class HexGrid : MonoBehaviour
                 try
                 {
                     File.WriteAllBytes(path, data);
-                    Debug.Log($"[HexGrid] DownloadImage cached url={url1} bytes={data.Length}");
+                    Debug.Log($"[HexGrid] DownloadImage cached url={resolvedUrl} bytes={data.Length}");
                 }
                 catch (IOException ioEx)
                 {
-                    Debug.LogError($"Failed to cache image '{url1}' to '{path}': {ioEx.Message}");
+                    Debug.LogError($"Failed to cache image '{resolvedUrl}' to '{path}': {ioEx.Message}");
                 }
             }
 
             var tex = DownloadHandlerTexture.GetContent(request);
             if (tex != null)
             {
-                Debug.Log($"[HexGrid] DownloadImage download complete url={url1} size={tex.width}x{tex.height}");
+                Debug.Log($"[HexGrid] DownloadImage download complete url={resolvedUrl} size={tex.width}x{tex.height}");
             }
-            ApplyTexture(tex, image, a, calc, t, cell, walls, url1);
+            ApplyTexture(tex, image, a, calc, t, cell, walls, resolvedUrl, originalUrl);
         }
     }
 
@@ -163,7 +173,7 @@ public class HexGrid : MonoBehaviour
         }
     }
 
-    private bool TryLoadCachedTexture(string path, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string originalUrl)
+    private bool TryLoadCachedTexture(string path, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string resolvedUrl, string originalUrl)
     {
         if (!File.Exists(path)) return false;
         try
@@ -185,8 +195,8 @@ public class HexGrid : MonoBehaviour
                 return false;
             }
 
-            Debug.Log($"[HexGrid] Cached texture loaded url={originalUrl} size={tex.width}x{tex.height}");
-            ApplyTexture(tex, image, a, calc, t, cell, walls, originalUrl);
+            Debug.Log($"[HexGrid] Cached texture loaded url={resolvedUrl} (original='{originalUrl}') size={tex.width}x{tex.height}");
+            ApplyTexture(tex, image, a, calc, t, cell, walls, resolvedUrl, originalUrl);
             return true;
         }
         catch (System.Exception ex)
@@ -198,16 +208,40 @@ public class HexGrid : MonoBehaviour
         return false;
     }
 
-    private void ApplyTexture(Texture2D tex, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string originalUrl)
+    private void ApplyTexture(Texture2D tex, Image image, System.Action a, bool calc, RectTransform t, HexCell cell, List<Transform> walls, string resolvedUrl, string originalUrl)
     {
         if (tex == null || image == null) return;
 
-        Debug.Log($"[HexGrid] ApplyTexture url={originalUrl} image={(image != null ? image.name : "null")} size={tex.width}x{tex.height} calc={calc}");
+        Debug.Log($"[HexGrid] ApplyTexture url={resolvedUrl} (original='{originalUrl}') image={(image != null ? image.name : "null")} size={tex.width}x{tex.height} calc={calc}");
         image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
         if (a != null) a();
 
-        if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, originalUrl);
+        if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, resolvedUrl);
+    }
+
+    private string ResolveNftUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+        {
+            return string.Empty;
+        }
+
+        if (!url.Contains("%"))
+        {
+            return url;
+        }
+
+        try
+        {
+            var decoded = System.Uri.UnescapeDataString(url);
+            return string.IsNullOrEmpty(decoded) ? url : decoded;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[HexGrid] ResolveNftUrl failed url='{url}' error={ex.Message}");
+            return url;
+        }
     }
 
     IEnumerator DownloadSVG(string url, SVGImage image, RectTransform t, HexCell cell)
@@ -335,7 +369,13 @@ public class HexGrid : MonoBehaviour
             panel_t.anchoredPosition = new Vector2(0, 0);
             panel_t.localPosition = new Vector2(0, 0);
             var si = panel.AddComponent<SelectImage>();
-            si.url = item["url"].ToString();
+            var rawUrl = item["url"].ToString();
+            var normalizedUrl = ResolveNftUrl(rawUrl);
+            if (normalizedUrl != rawUrl)
+            {
+                Debug.Log($"[HexGrid] GetNft normalized url from '{rawUrl}' to '{normalizedUrl}'");
+            }
+            si.url = normalizedUrl;
             si.selected = (bool)item["selected"];
             si.description = item["description"].ToString();
             si.link = item["externalUrl"].ToString();
@@ -383,7 +423,12 @@ public class HexGrid : MonoBehaviour
         var walls_o = cell.transform.Find("Walls");
         if (floor > 0 && cell.floors >= floor) walls_o = cell.transform.Find($"Floor_{floor}").Find("Walls");
         foreach (Transform tr in walls_o.transform) if (tr.tag == "wall") walls.Add(tr);
-        Debug.Log($"[HexGrid] AddNft url={url} cell={cell.coordinates.ToStringOnSeparateLines()} floor={floor} wallIndex={index} initial=({ix},{iy}) scale={iscale}");
+        var normalizedUrl = ResolveNftUrl(url);
+        if (normalizedUrl != url)
+        {
+            Debug.Log($"[HexGrid] AddNft normalized url from '{url}' to '{normalizedUrl}'");
+        }
+        Debug.Log($"[HexGrid] AddNft url={normalizedUrl} cell={cell.coordinates.ToStringOnSeparateLines()} floor={floor} wallIndex={index} initial=({ix},{iy}) scale={iscale}");
         var img_o = new GameObject("nft");
         var t = img_o.AddComponent<RectTransform>();
         t.transform.SetParent(walls[index]);
@@ -408,15 +453,15 @@ public class HexGrid : MonoBehaviour
         if (cell.coordinates.address == PlayerPrefs.GetString("address"))
         {
             var di = img_o.AddComponent<DragImage>();
-            di.url = url;
+            di.url = normalizedUrl;
             di.index = index;
             di.walls = walls;
-            Debug.Log($"[HexGrid] AddNft DragImage enabled url={url}");
+            Debug.Log($"[HexGrid] AddNft DragImage enabled url={normalizedUrl}");
         }
 
         var image = img_o.AddComponent<Image>();
-        Debug.Log($"[HexGrid] AddNft start download url={url} calc={calc}");
-        StartCoroutine(DownloadImage(url, image, null, calc, t, cell, walls));
+        Debug.Log($"[HexGrid] AddNft start download url={normalizedUrl} calc={calc}");
+        StartCoroutine(DownloadImage(normalizedUrl, image, null, calc, t, cell, walls));
     }
 
     //TODO: îïòèìèçèðîâàòü
