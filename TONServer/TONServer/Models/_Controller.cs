@@ -121,21 +121,140 @@ namespace TONServer
         {
             if (request == null) return string.Empty;
 
-            string host = request.Host.Value;
-            if (request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost) && forwardedHost.Count > 0)
+            string forwardedHost = GetForwardedComponent(request, "host");
+            if (string.IsNullOrWhiteSpace(forwardedHost) && request.Headers.TryGetValue("X-Forwarded-Host", out var xForwardedHost))
             {
-                var candidate = forwardedHost[0]?.Split(',')?[0]?.Trim();
-                if (!string.IsNullOrWhiteSpace(candidate)) host = candidate;
+                forwardedHost = ExtractFirstHeaderValue(xForwardedHost);
             }
 
-            string scheme = request.Scheme;
-            if (request.Headers.TryGetValue("X-Forwarded-Proto", out var forwardedProto) && forwardedProto.Count > 0)
+            string host = !string.IsNullOrWhiteSpace(forwardedHost) ? forwardedHost : request.Host.Value;
+
+            string forwardedProto = GetForwardedComponent(request, "proto");
+            if (string.IsNullOrWhiteSpace(forwardedProto))
             {
-                var proto = forwardedProto[0]?.Split(',')?[0]?.Trim();
-                if (!string.IsNullOrWhiteSpace(proto)) scheme = proto;
+                if (request.Headers.TryGetValue("X-Forwarded-Proto", out var protoValues))
+                {
+                    forwardedProto = ExtractFirstHeaderValue(protoValues);
+                }
+                else if (request.Headers.TryGetValue("X-Forwarded-Scheme", out var schemeValues))
+                {
+                    forwardedProto = ExtractFirstHeaderValue(schemeValues);
+                }
+            }
+
+            string scheme = !string.IsNullOrWhiteSpace(forwardedProto) ? forwardedProto : request.Scheme;
+            if (string.IsNullOrWhiteSpace(scheme)) scheme = Uri.UriSchemeHttps;
+
+            if (string.Equals(scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && !IsLocalHost(host))
+            {
+                scheme = Uri.UriSchemeHttps;
             }
 
             return $"{scheme}://{host}";
+        }
+
+        public static string NormalizeAssetUrl(HttpRequest request, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return url;
+            if (!uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) return url;
+
+            var candidateHosts = new List<string>();
+
+            string forwardedHost = GetForwardedComponent(request, "host");
+            if (!string.IsNullOrWhiteSpace(forwardedHost)) candidateHosts.Add(NormalizeHostForComparison(forwardedHost));
+
+            if (request?.Headers.TryGetValue("X-Forwarded-Host", out var xForwardedHost) == true)
+            {
+                var value = ExtractFirstHeaderValue(xForwardedHost);
+                if (!string.IsNullOrWhiteSpace(value)) candidateHosts.Add(NormalizeHostForComparison(value));
+            }
+
+            if (request != null && request.Host.HasValue)
+            {
+                candidateHosts.Add(NormalizeHostForComparison(request.Host.Value));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_Singleton.Host))
+            {
+                candidateHosts.Add(NormalizeHostForComparison(_Singleton.Host));
+            }
+
+            candidateHosts = candidateHosts.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (candidateHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(uri)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = -1
+                };
+                return builder.Uri.ToString();
+            }
+
+            return url;
+        }
+
+        private static string GetForwardedComponent(HttpRequest request, string key)
+        {
+            if (request?.Headers.TryGetValue("Forwarded", out var forwardedValues) != true) return null;
+
+            foreach (var rawValue in forwardedValues)
+            {
+                if (string.IsNullOrWhiteSpace(rawValue)) continue;
+
+                var segments = rawValue.Split(';');
+                foreach (var segment in segments)
+                {
+                    var trimmed = segment.Trim();
+                    if (trimmed.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var valuePart = trimmed.Substring(key.Length + 1).Trim().Trim('"');
+                        if (!string.IsNullOrWhiteSpace(valuePart)) return valuePart;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string ExtractFirstHeaderValue(Microsoft.Extensions.Primitives.StringValues values)
+        {
+            foreach (var value in values)
+            {
+                if (string.IsNullOrWhiteSpace(value)) continue;
+                var first = value.Split(',').FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(first)) return first.Trim();
+            }
+            return null;
+        }
+
+        private static bool IsLocalHost(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return true;
+            var comparisonHost = NormalizeHostForComparison(host);
+            if (string.IsNullOrWhiteSpace(comparisonHost)) return true;
+
+            return comparisonHost.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || comparisonHost.Equals("127.0.0.1")
+                || comparisonHost.Equals("::1")
+                || comparisonHost.EndsWith(".local", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeHostForComparison(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return null;
+            var normalized = host.Trim().Trim('"');
+            var commaIndex = normalized.IndexOf(',');
+            if (commaIndex >= 0) normalized = normalized.Substring(0, commaIndex);
+            normalized = normalized.Trim();
+            if (normalized.Length == 0) return null;
+
+            var colonIndex = normalized.IndexOf(':');
+            if (colonIndex >= 0) normalized = normalized.Substring(0, colonIndex);
+
+            return normalized;
         }
 
         protected string RenderPartialViewToString(string viewName, object model = null)
