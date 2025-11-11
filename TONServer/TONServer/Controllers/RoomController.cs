@@ -331,7 +331,8 @@ namespace TONServer.Controllers
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            var avatarUrl = _Controller.NormalizeAssetUrl(Request, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, avatarUrl);
             return StatusCode(200);
         }
 
@@ -368,11 +369,12 @@ namespace TONServer.Controllers
                     shortName = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 }
 
+                var defaultAvatar = _Controller.NormalizeAssetUrl(Request, $"{_Controller.GetLeftPart(Request)}/img/default.png");
                 db.RoomWebs.Add(new RoomWeb
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = defaultAvatar
                 });
                 db.SaveChanges();
             }

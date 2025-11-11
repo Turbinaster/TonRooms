@@ -119,38 +119,76 @@ namespace TONServer
 
         public static string GetLeftPart(HttpRequest request)
         {
-            if (request == null) return string.Empty;
+            string hostValue = null;
+            string comparisonHost = null;
 
-            string forwardedHost = GetForwardedComponent(request, "host");
-            if (string.IsNullOrWhiteSpace(forwardedHost) && request.Headers.TryGetValue("X-Forwarded-Host", out var xForwardedHost))
+            if (request != null)
             {
-                forwardedHost = ExtractFirstHeaderValue(xForwardedHost);
+                string forwardedHost = GetForwardedComponent(request, "host");
+                if (string.IsNullOrWhiteSpace(forwardedHost) && request.Headers.TryGetValue("X-Forwarded-Host", out var xForwardedHost))
+                {
+                    forwardedHost = ExtractFirstHeaderValue(xForwardedHost);
+                }
+
+                hostValue = !string.IsNullOrWhiteSpace(forwardedHost)
+                    ? forwardedHost.Trim()
+                    : (request.Host.HasValue ? request.Host.Value : null);
+                comparisonHost = NormalizeHostForComparison(hostValue);
             }
 
-            string host = !string.IsNullOrWhiteSpace(forwardedHost) ? forwardedHost : request.Host.Value;
-
-            string forwardedProto = GetForwardedComponent(request, "proto");
-            if (string.IsNullOrWhiteSpace(forwardedProto))
+            if (string.IsNullOrWhiteSpace(hostValue))
             {
-                if (request.Headers.TryGetValue("X-Forwarded-Proto", out var protoValues))
-                {
-                    forwardedProto = ExtractFirstHeaderValue(protoValues);
-                }
-                else if (request.Headers.TryGetValue("X-Forwarded-Scheme", out var schemeValues))
-                {
-                    forwardedProto = ExtractFirstHeaderValue(schemeValues);
-                }
+                hostValue = _Singleton.Host;
+                comparisonHost = NormalizeHostForComparison(hostValue);
             }
 
-            string scheme = !string.IsNullOrWhiteSpace(forwardedProto) ? forwardedProto : request.Scheme;
-            if (string.IsNullOrWhiteSpace(scheme)) scheme = Uri.UriSchemeHttps;
+            if (string.IsNullOrWhiteSpace(hostValue))
+            {
+                hostValue = "localhost";
+                comparisonHost = "localhost";
+            }
 
-            if (string.Equals(scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && !IsLocalHost(host))
+            string scheme = null;
+            if (request != null)
+            {
+                string forwardedProto = GetForwardedComponent(request, "proto");
+                if (string.IsNullOrWhiteSpace(forwardedProto))
+                {
+                    if (request.Headers.TryGetValue("X-Forwarded-Proto", out var protoValues))
+                    {
+                        forwardedProto = ExtractFirstHeaderValue(protoValues);
+                    }
+                    else if (request.Headers.TryGetValue("X-Forwarded-Scheme", out var schemeValues))
+                    {
+                        forwardedProto = ExtractFirstHeaderValue(schemeValues);
+                    }
+                }
+
+                scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+                    ? forwardedProto.Trim()
+                    : request.Scheme;
+            }
+
+            if (string.IsNullOrWhiteSpace(scheme))
             {
                 scheme = Uri.UriSchemeHttps;
             }
 
-            return $"{scheme}://{host}";
+            bool isLocal = IsLocalHost(comparisonHost);
+            if (!isLocal)
+            {
+                scheme = Uri.UriSchemeHttps;
+            }
+            else if (!scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+                     !scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                scheme = Uri.UriSchemeHttp;
+            }
+
+            hostValue = hostValue.Trim();
+            hostValue = hostValue.TrimEnd('/');
+
+            return $"{scheme.ToLowerInvariant()}://{hostValue}";
         }
 
         public static string NormalizeAssetUrl(HttpRequest request, string url)
