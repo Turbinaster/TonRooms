@@ -74,6 +74,8 @@ namespace TONServer.Controllers
             try
             {
                 string address1 = Rep.SessionAddress(db, session, ref address, out var room, out var owner);
+                NormalizeAvatar(room);
+                NormalizeAvatar(owner);
                 bool result = address == address1;
                 var items = db.ImageWebs.Where(x => x.Address == address && x.Selected).ToList();
                 bool auth = owner != null;
@@ -288,7 +290,8 @@ namespace TONServer.Controllers
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            var avatarPath = NormalizeAvatarPath($"/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, avatarPath);
             return StatusCode(200);
         }
 
@@ -302,7 +305,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = NormalizeAvatarPath(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -312,6 +315,39 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private static void NormalizeAvatar(RoomWeb room)
+        {
+            if (room == null) return;
+            room.Avatar = NormalizeAvatarPath(room.Avatar);
+        }
+
+        private static string NormalizeAvatarPath(string avatar)
+        {
+            if (string.IsNullOrWhiteSpace(avatar))
+            {
+                return "/img/default.png";
+            }
+
+            avatar = avatar.Replace("\\", "/");
+
+            if (Uri.TryCreate(avatar, UriKind.Absolute, out var absoluteUri))
+            {
+                avatar = absoluteUri.PathAndQuery;
+            }
+
+            if (avatar.StartsWith("~/", StringComparison.Ordinal))
+            {
+                avatar = avatar.Substring(1);
+            }
+
+            if (!avatar.StartsWith("/", StringComparison.Ordinal))
+            {
+                avatar = "/" + avatar.TrimStart('/');
+            }
+
+            return avatar;
         }
 
         private void RegisterRoomSession(string session, string address)
@@ -329,7 +365,7 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = "/img/default.png"
                 });
                 db.SaveChanges();
             }
