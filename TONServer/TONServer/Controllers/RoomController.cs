@@ -302,7 +302,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = BuildAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -329,10 +329,36 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = BuildAvatarUrl("/img/default.png")
                 });
                 db.SaveChanges();
             }
+        }
+
+        private string BuildAvatarUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return url;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri))
+            {
+                var baseUri = new Uri(_Controller.GetLeftPart(Request));
+                absoluteUri = new Uri(baseUri, url);
+            }
+
+            if (Request?.IsHttps == true && !string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(absoluteUri)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = absoluteUri.Port == 80 ? -1 : absoluteUri.Port
+                };
+                absoluteUri = builder.Uri;
+            }
+
+            return absoluteUri.ToString();
         }
 
         [HttpPost]
