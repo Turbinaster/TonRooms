@@ -92,24 +92,62 @@ public class HexGrid : MonoBehaviour
     #region nft
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
-        string url1 = url;
+        string originalUrl = url;
         string ext = Regex.Match(url, @"\.[^\.]+$").Value;
         string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
-        if (File.Exists(path)) url = $"file://{path}";
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success)
-            Debug.Log(request.error);
-        else
+
+        UnityWebRequest request = null;
+        bool loadedFromCache = false;
+
+        if (File.Exists(path))
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            request = UnityWebRequestTexture.GetTexture($"file://{path}");
+            yield return request.SendWebRequest();
 
-            if (a != null) a();
-
-            if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, url1);
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"Failed to load cached NFT image '{path}'. Falling back to remote URL. Error: {request.error}");
+                request.Dispose();
+                request = null;
+            }
+            else
+            {
+                loadedFromCache = true;
+            }
         }
+
+        if (request == null)
+        {
+            request = UnityWebRequestTexture.GetTexture(originalUrl);
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log(request.error);
+                request.Dispose();
+                yield break;
+            }
+        }
+
+        if (!loadedFromCache)
+        {
+            try
+            {
+                File.WriteAllBytes(path, request.downloadHandler.data);
+            }
+            catch (IOException ioEx)
+            {
+                Debug.LogWarning($"Failed to cache NFT image '{originalUrl}' to '{path}'. {ioEx.Message}");
+            }
+        }
+
+        var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
+        image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+
+        if (a != null) a();
+
+        if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, originalUrl);
+
+        request.Dispose();
     }
 
     IEnumerator DownloadSVG(string url, SVGImage image, RectTransform t, HexCell cell)
