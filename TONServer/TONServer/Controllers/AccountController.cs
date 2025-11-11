@@ -180,7 +180,8 @@ namespace TONServer
                 if (rec == null) throw new Exception(lang["Пользователь с таким email не найден"]);
                 rec.ConfirmRemember = Helper.RandomString();
                 await db.SaveChangesAsync();
-                string url = $"{GetLeftPart(Request)}/account/rememberconfirm/{rec.ConfirmRemember}";
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                string url = $"{baseUrl}/account/rememberconfirm/{rec.ConfirmRemember}";
                 await Rep.Mail(email, lang["Восстановление пароля"], $@"{lang["Для восстановления пароля перейдите по ссылке:"]}<br><br><a target=""_blank"" href=""{url}"">{url}</a>");
                 return Json(new { r = "ok" });
             }

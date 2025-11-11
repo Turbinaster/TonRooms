@@ -75,6 +75,7 @@ namespace TONServer
             {
                 var images = new List<Image>();
                 var room = db.Rooms.FirstOrDefault(r => r.Address == address);
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
                 LogInformation($"IndexController.GetNft invoked for address '{address}'.");
                 if (string.IsNullOrWhiteSpace(address) || room == null)
                 {
@@ -118,7 +119,7 @@ namespace TONServer
                                         var convert = await convertApi.ConvertAsync("svg", "png", new ConvertApiFileParam("File", url));
                                         await convert.SaveFileAsync(path);
                                     }
-                                    string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+                                    string result = $"{baseUrl}/files/{file}";
                                     image.Url = result;
                                 }
                                 images.Add(image);
@@ -257,9 +258,10 @@ namespace TONServer
 
         public async Task<IActionResult> Test()
         {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
             string url = "ipfs://bafybeibwffjrngqzvmckaa36y5lc3aihzuepjkbsllktsedxc5wu3ctuvu/7454.svg";
             string file = url.Replace("/", "").Replace(":", "").Replace(".", "") + ".png";
-            string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+            string result = $"{baseUrl}/files/{file}";
             var ipfs = new IpfsEngine(new char[] { 'q' });
             string text = await ipfs.FileSystem.ReadAllTextAsync(url.Replace("ipfs://", ""));
             return Content(text);

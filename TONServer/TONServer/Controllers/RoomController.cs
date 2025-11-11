@@ -93,6 +93,7 @@ namespace TONServer.Controllers
                 if (session == null && _Singleton.Development) address = "EQB0zy3wOR35FF1q2j3NsCxOyqzoRYioFroMqvsYEJ7mJ7-6";
                 else address = _Singleton.Sessions.ContainsKey(session) ? _Singleton.Sessions[session] : "";
                 LogInformation($"RoomController.GetNft invoked for session '{session ?? "<null>"}' with address '{address}'.");
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
                 if (string.IsNullOrWhiteSpace(address))
                 {
                     var missingAddressMessage = "Wallet address is not available for the current session.";
@@ -180,7 +181,7 @@ namespace TONServer.Controllers
                                 continue;
                             }
 
-                            string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+                            string result = $"{baseUrl}/files/{file}";
                             image.Url = result;
                             images.Add(image);
                         }
@@ -287,8 +288,9 @@ namespace TONServer.Controllers
         [HttpPost]
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, $"{baseUrl}/files/{list[0]}");
             return StatusCode(200);
         }
 
@@ -316,6 +318,7 @@ namespace TONServer.Controllers
 
         private void RegisterRoomSession(string session, string address)
         {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
             SetSessionAddress(session, address);
             if (!db.RoomWebs.Any(x => x.Address == address))
             {
@@ -329,7 +332,7 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = $"{baseUrl}/img/default.png"
                 });
                 db.SaveChanges();
             }

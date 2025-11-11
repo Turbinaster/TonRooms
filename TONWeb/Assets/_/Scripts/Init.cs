@@ -41,7 +41,7 @@ public class Init : MonoBehaviour
     public void GetNft(string value)
     {
         var set = new Set();
-        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "http://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
+        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "https://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
         else set = JsonConvert.DeserializeObject<Set>(value);
         var walls = new List<Transform>();
         var walls_o = GameObject.Find("Walls");
@@ -91,7 +91,7 @@ public class Init : MonoBehaviour
 
             //if (t != null)
             {
-                //Ширина и высота картинки
+                //ГГЁГ°ГЁГ­Г  ГЁ ГўГ»Г±Г®ГІГ  ГЄГ Г°ГІГЁГ­ГЄГЁ
                 float w = tex.width / 1000f;
                 float h = tex.height / 1000f;
                 if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
