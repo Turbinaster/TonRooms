@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -41,7 +42,7 @@ public class Init : MonoBehaviour
     public void GetNft(string value)
     {
         var set = new Set();
-        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "http://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
+        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "/files/httpsnfttondiamondsnft29982998svg.png" });
         else set = JsonConvert.DeserializeObject<Set>(value);
         var walls = new List<Transform>();
         var walls_o = GameObject.Find("Walls");
@@ -81,7 +82,7 @@ public class Init : MonoBehaviour
 
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(ResolveUrl(url));
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
         else
@@ -91,7 +92,68 @@ public class Init : MonoBehaviour
 
             //if (t != null)
             {
-                //Ўирина и высота картинки
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(ResolveUrl(url));
+    private string ResolveUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+
+        var trimmed = url.Trim();
+
+        if (trimmed.StartsWith("http://rooms.worldofton.ru", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = "https://rooms.worldofton.ru" + trimmed.Substring("http://rooms.worldofton.ru".Length);
+        }
+        else if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = "https://" + trimmed.Substring("http://".Length);
+        }
+
+        if (trimmed.StartsWith("//"))
+        {
+            trimmed = "https:" + trimmed;
+        }
+
+        if (trimmed.StartsWith("/"))
+        {
+            return CombineWithOrigin(trimmed);
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+        {
+            return trimmed;
+        }
+
+        return CombineWithOrigin("/" + trimmed.TrimStart('/'));
+    }
+
+    private string CombineWithOrigin(string path)
+    {
+        var origin = GetOrigin();
+        if (string.IsNullOrEmpty(origin))
+        {
+            return path;
+        }
+
+        return origin.TrimEnd('/') + path;
+    }
+
+    private string GetOrigin()
+    {
+        var absolute = Application.absoluteURL;
+        if (string.IsNullOrEmpty(absolute))
+        {
+            return "https://rooms.worldofton.ru";
+        }
+
+        if (Uri.TryCreate(absolute, UriKind.Absolute, out var uri))
+        {
+            return uri.GetLeftPart(UriPartial.Authority);
+        }
+
+        return "https://rooms.worldofton.ru";
+    }
+
+
                 float w = tex.width / 1000f;
                 float h = tex.height / 1000f;
                 if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }

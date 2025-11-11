@@ -78,6 +78,15 @@ namespace TONServer.Controllers
                 var items = db.ImageWebs.Where(x => x.Address == address && x.Selected).ToList();
                 bool auth = owner != null;
                 var incoming = auth ? db.RoomWebs.Where(x => owner.IncomingsList.Contains(x.Id)).Count() : 0;
+
+                var updated = NormalizeImages(items);
+                updated |= NormalizeRoomWeb(room);
+                updated |= NormalizeRoomWeb(owner);
+                if (updated)
+                {
+                    db.SaveChanges();
+                }
+
                 return Json(new { r = "ok", result, items, room, auth, owner, text = Rep.FriendsButtonText(owner, room), incoming });
             }
             catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
@@ -180,18 +189,49 @@ namespace TONServer.Controllers
                                 continue;
                             }
 
-                            string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
-                            image.Url = result;
+                            var relativePath = $"/files/{file}";
+                            image.Url = NormalizeMediaUrl(relativePath);
+                            NormalizeImageWeb(image);
                             images.Add(image);
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
                     var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
-                    foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
-                    foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
-                    db.SaveChanges();
+                    var hasChanges = NormalizeImages(recs);
+
+                    foreach (var image in images)
+                    {
+                        if (!recs.Any(x => string.Equals(x.Url, image.Url, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            db.ImageWebs.Add(image);
+                            hasChanges = true;
+                        }
+                    }
+
+                    foreach (var rec in recs)
+                    {
+                        if (!images.Any(x => string.Equals(x.Url, rec.Url, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            db.ImageWebs.Remove(rec);
+                            hasChanges = true;
+                        }
+                    }
+
+                    if (hasChanges)
+                    {
+                        await db.SaveChangesAsync();
+                    }
+
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    if (NormalizeImages(storedImages))
+                    {
+                        await db.SaveChangesAsync();
+                        storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                        NormalizeImages(storedImages);
+                    }
+
                     LogInformation($"Synchronized {images.Count} NFT images for address '{address}'.");
-                    return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    return Json(new { r = "ok", images = storedImages });
                 }
                 else
                 {
@@ -199,7 +239,9 @@ namespace TONServer.Controllers
                     var status = nftResponse?.StatusCode;
                     var message = $"TON API did not return NFT data for address '{address}' (status {(int?)status} {status}).";
                     LogWarning(message);
-                    return Json(new { r = "error", m = message, images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    if (NormalizeImages(storedImages)) db.SaveChanges();
+                    return Json(new { r = "error", m = message, images = storedImages });
                 }
             }
             catch (Exception ex)
@@ -288,7 +330,8 @@ namespace TONServer.Controllers
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            var avatarPath = NormalizeMediaUrl($"/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, avatarPath);
             return StatusCode(200);
         }
 
@@ -302,12 +345,12 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = NormalizeMediaUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
-                rec.Link1 = "https://t.me/" + profile_edit_link1.Replace("https://t.me/", "");
-                rec.Link2 = profile_edit_link2;
+                rec.Link1 = NormalizeExternalUrl("https://t.me/" + profile_edit_link1.Replace("https://t.me/", ""));
+                rec.Link2 = NormalizeExternalUrl(profile_edit_link2);
                 db.SaveChanges();
                 return Json(new { r = "ok", rec });
             }
@@ -329,7 +372,7 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = NormalizeMediaUrl("/img/default.png")
                 });
                 db.SaveChanges();
             }
@@ -430,6 +473,149 @@ namespace TONServer.Controllers
                 return PartialView("friends_teleport", room);
             }
             catch (Exception ex) { Helper.Log(ex); return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private bool NormalizeImages(IEnumerable<ImageWeb> images)
+        {
+            var changed = false;
+            if (images == null) return false;
+
+            foreach (var image in images)
+            {
+                changed |= NormalizeImageWeb(image);
+            }
+
+            return changed;
+        }
+
+        private bool NormalizeRoomWeb(RoomWeb room)
+        {
+            if (room == null) return false;
+
+            var changed = false;
+            var avatar = NormalizeMediaUrl(room.Avatar);
+            if (avatar != room.Avatar)
+            {
+                room.Avatar = avatar;
+                changed = true;
+            }
+
+            var link1 = NormalizeExternalUrl(room.Link1);
+            if (link1 != room.Link1)
+            {
+                room.Link1 = link1;
+                changed = true;
+            }
+
+            var link2 = NormalizeExternalUrl(room.Link2);
+            if (link2 != room.Link2)
+            {
+                room.Link2 = link2;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private bool NormalizeImageWeb(ImageWeb image)
+        {
+            if (image == null) return false;
+
+            var changed = false;
+            var url = NormalizeMediaUrl(image.Url);
+            if (url != image.Url)
+            {
+                image.Url = url;
+                changed = true;
+            }
+
+            var external = NormalizeExternalUrl(image.ExternalUrl);
+            if (external != image.ExternalUrl)
+            {
+                image.ExternalUrl = external;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private string NormalizeMediaUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            var trimmed = url.Trim();
+            if (trimmed.StartsWith("/"))
+            {
+                return trimmed;
+            }
+
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute))
+            {
+                if (string.Equals(absolute.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    absolute = new UriBuilder(absolute)
+                    {
+                        Scheme = Uri.UriSchemeHttps,
+                        Port = absolute.Port == 80 ? -1 : absolute.Port
+                    }.Uri;
+                }
+
+                if (IsSameHost(absolute))
+                {
+                    var relative = absolute.PathAndQuery + absolute.Fragment;
+                    return string.IsNullOrEmpty(relative) ? "/" : relative;
+                }
+
+                return absolute.ToString();
+            }
+
+            return "/" + trimmed.TrimStart('/');
+        }
+
+        private string NormalizeExternalUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            var trimmed = url.Trim();
+            if (trimmed.StartsWith("/"))
+            {
+                return trimmed;
+            }
+
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute))
+            {
+                return trimmed;
+            }
+
+            if (string.Equals(absolute.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                absolute = new UriBuilder(absolute)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = absolute.Port == 80 ? -1 : absolute.Port
+                }.Uri;
+            }
+
+            return absolute.ToString();
+        }
+
+        private bool IsSameHost(Uri uri)
+        {
+            if (uri == null) return false;
+
+            var requestHost = Request.Host.Host;
+            if (string.IsNullOrEmpty(requestHost))
+            {
+                requestHost = Request.Host.Value;
+            }
+
+            if (!string.IsNullOrEmpty(requestHost) && requestHost.Contains(":"))
+            {
+                requestHost = requestHost.Split(':')[0];
+            }
+
+            return string.Equals(uri.Host, requestHost, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "rooms.worldofton.ru", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
