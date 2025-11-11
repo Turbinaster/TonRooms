@@ -75,7 +75,10 @@ namespace TONServer.Controllers
             {
                 string address1 = Rep.SessionAddress(db, session, ref address, out var room, out var owner);
                 bool result = address == address1;
-                var items = db.ImageWebs.Where(x => x.Address == address && x.Selected).ToList();
+                var itemEntities = db.ImageWebs.Where(x => x.Address == address && x.Selected).ToList();
+                var itemsChanged = NormalizeImageUrlsInPlace(itemEntities);
+                var items = CloneImagesWithNormalizedUrls(itemEntities);
+                if (itemsChanged) db.SaveChanges();
                 bool auth = owner != null;
                 var incoming = auth ? db.RoomWebs.Where(x => owner.IncomingsList.Contains(x.Id)).Count() : 0;
                 return Json(new { r = "ok", result, items, room, auth, owner, text = Rep.FriendsButtonText(owner, room), incoming });
@@ -181,17 +184,23 @@ namespace TONServer.Controllers
                             }
 
                             string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
-                            image.Url = result;
+                            var normalizedResult = NormalizeMediaUrl(result);
+                            image.Url = normalizedResult;
                             images.Add(image);
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
                     var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    NormalizeImageUrlsInPlace(recs);
                     foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
                     foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
                     db.SaveChanges();
                     LogInformation($"Synchronized {images.Count} NFT images for address '{address}'.");
-                    return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    var storedImagesChanged = NormalizeImageUrlsInPlace(storedImages);
+                    if (storedImagesChanged) db.SaveChanges();
+                    var normalizedStoredImages = CloneImagesWithNormalizedUrls(storedImages);
+                    return Json(new { r = "ok", images = normalizedStoredImages });
                 }
                 else
                 {
@@ -199,7 +208,11 @@ namespace TONServer.Controllers
                     var status = nftResponse?.StatusCode;
                     var message = $"TON API did not return NFT data for address '{address}' (status {(int?)status} {status}).";
                     LogWarning(message);
-                    return Json(new { r = "error", m = message, images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    var storedImagesChanged = NormalizeImageUrlsInPlace(storedImages);
+                    if (storedImagesChanged) db.SaveChanges();
+                    var normalizedStoredImages = CloneImagesWithNormalizedUrls(storedImages);
+                    return Json(new { r = "error", m = message, images = normalizedStoredImages });
                 }
             }
             catch (Exception ex)
@@ -248,6 +261,86 @@ namespace TONServer.Controllers
             if (sanitized.Length > 80) sanitized = sanitized.Substring(0, 80);
 
             return sanitized + extension;
+        }
+
+        private bool NormalizeImageUrlsInPlace(IEnumerable<ImageWeb> images)
+        {
+            var changed = false;
+            if (images == null) return changed;
+
+            foreach (var image in images)
+            {
+                if (image == null) continue;
+                var normalizedUrl = NormalizeMediaUrl(image.Url);
+                if (!string.Equals(image.Url, normalizedUrl, StringComparison.Ordinal))
+                {
+                    image.Url = normalizedUrl;
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private List<ImageWeb> CloneImagesWithNormalizedUrls(IEnumerable<ImageWeb> images)
+        {
+            var result = new List<ImageWeb>();
+            if (images == null) return result;
+
+            foreach (var image in images)
+            {
+                if (image == null) continue;
+                var normalizedUrl = NormalizeMediaUrl(image.Url);
+                result.Add(new ImageWeb
+                {
+                    Id = image.Id,
+                    Address = image.Address,
+                    X = image.X,
+                    Y = image.Y,
+                    Scale = image.Scale,
+                    Wall = image.Wall,
+                    Selected = image.Selected,
+                    Url = normalizedUrl,
+                    Name = image.Name,
+                    Description = image.Description,
+                    ExternalUrl = image.ExternalUrl
+                });
+            }
+
+            return result;
+        }
+
+        private string NormalizeMediaUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            var trimmed = url.Trim();
+            if (trimmed.StartsWith("/", StringComparison.Ordinal))
+            {
+                return trimmed;
+            }
+
+            if (trimmed.StartsWith("//", StringComparison.Ordinal))
+            {
+                trimmed = $"https:{trimmed}";
+            }
+
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            {
+                return trimmed;
+            }
+
+            if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(uri)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = uri.Port == 80 ? -1 : uri.Port
+                };
+                return builder.Uri.ToString();
+            }
+
+            return uri.ToString();
         }
 
         [HttpPost]

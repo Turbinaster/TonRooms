@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -12,6 +13,7 @@ public class Init : MonoBehaviour
     public Texture2D cursorHand;
     public GameObject mobileCanvas, jump, ok;
     public DragImage image;
+    private static string cachedOrigin;
 
     void Awake()
     {
@@ -41,7 +43,7 @@ public class Init : MonoBehaviour
     public void GetNft(string value)
     {
         var set = new Set();
-        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "http://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
+        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "https://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
         else set = JsonConvert.DeserializeObject<Set>(value);
         var walls = new List<Transform>();
         var walls_o = GameObject.Find("Walls");
@@ -81,7 +83,8 @@ public class Init : MonoBehaviour
 
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        string resolvedUrl = ResolveMediaUrl(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(resolvedUrl);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
         else
@@ -91,7 +94,8 @@ public class Init : MonoBehaviour
 
             //if (t != null)
             {
-                //Ўирина и высота картинки
+        string resolvedUrl = ResolveMediaUrl(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(resolvedUrl);
                 float w = tex.width / 1000f;
                 float h = tex.height / 1000f;
                 if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
@@ -156,6 +160,36 @@ public class Init : MonoBehaviour
     {
         Helper.mobile = mobile == "true";
         if (Helper.mobile) mobileCanvas.SetActive(true);
+    }
+
+    private string ResolveMediaUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+
+        url = url.Trim();
+        if (url.StartsWith("/")) return GetOrigin() + url;
+        if (url.StartsWith("//")) return "https:" + url.Substring(2);
+        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            return "https://" + url.Substring("http://".Length);
+        }
+
+        return url;
+    }
+
+    private string GetOrigin()
+    {
+        if (!string.IsNullOrEmpty(cachedOrigin)) return cachedOrigin;
+
+        string absolute = Application.absoluteURL;
+        if (!string.IsNullOrEmpty(absolute) && Uri.TryCreate(absolute, UriKind.Absolute, out var uri))
+        {
+            cachedOrigin = $"{uri.Scheme}://{uri.Authority}";
+        }
+
+        if (string.IsNullOrEmpty(cachedOrigin)) cachedOrigin = "https://rooms.worldofton.ru";
+
+        return cachedOrigin;
     }
 }
 
