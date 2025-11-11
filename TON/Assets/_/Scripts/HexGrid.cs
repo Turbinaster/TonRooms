@@ -1,11 +1,13 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -92,24 +94,145 @@ public class HexGrid : MonoBehaviour
     #region nft
     IEnumerator DownloadImage(string url, Image image, System.Action a = null, bool calc = false, RectTransform t = null, HexCell cell = null, List<Transform> walls = null)
     {
-        string url1 = url;
-        string ext = Regex.Match(url, @"\.[^\.]+$").Value;
-        string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
-        if (File.Exists(path)) url = $"file://{path}";
+        if (string.IsNullOrEmpty(url) || image == null)
+        {
+            yield break;
+        }
+
+        string originalUrl = url;
+        string cacheKey = BuildCacheKey(originalUrl);
+        string cachedPath = TryGetCachedImagePath(cacheKey);
+        bool hasCachedFile = !string.IsNullOrEmpty(cachedPath) && File.Exists(cachedPath);
+        if (hasCachedFile)
+        {
+            url = $"file://{cachedPath}";
+        }
+
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
-            Debug.Log(request.error);
-        else
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-
-            if (a != null) a();
-
-            if (t != null) CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, url1);
+            Debug.Log(request.error);
+            yield break;
         }
+
+        var handler = (DownloadHandlerTexture)request.downloadHandler;
+        var tex = handler.texture;
+        if (tex == null)
+        {
+            yield break;
+        }
+
+        image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+
+        if (!hasCachedFile && !string.IsNullOrEmpty(cacheKey))
+        {
+            var contentType = request.GetResponseHeader("Content-Type");
+            string extension = DetermineCacheExtension(originalUrl, contentType);
+            string path = Path.Combine(Application.persistentDataPath, cacheKey + extension);
+            try
+            {
+                File.WriteAllBytes(path, request.downloadHandler.data);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Application.persistentDataPath);
+                    File.WriteAllBytes(path, request.downloadHandler.data);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.Log($"Failed to cache image '{originalUrl}': {ex.Message}");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.Log($"Failed to cache image '{originalUrl}': {ex.Message}");
+            }
+        }
+
+        if (a != null) a();
+
+        if (t != null)
+        {
+            CalcSize((float)tex.width, (float)tex.height, t, cell, calc, walls, originalUrl);
+        }
+    }
+
+    string TryGetCachedImagePath(string cacheKey)
+    {
+        if (string.IsNullOrEmpty(cacheKey)) return null;
+
+        try
+        {
+            if (!Directory.Exists(Application.persistentDataPath)) return null;
+            var files = Directory.GetFiles(Application.persistentDataPath, cacheKey + ".*");
+            return files.FirstOrDefault();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.Log($"Failed to read NFT cache: {ex.Message}");
+            return null;
+        }
+    }
+
+    static string BuildCacheKey(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+
+        using (var sha = SHA256.Create())
+        {
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(value));
+            var sb = new StringBuilder(hash.Length * 2);
+            foreach (var b in hash)
+            {
+                sb.Append(b.ToString("x2"));
+            }
+            return sb.ToString();
+        }
+    }
+
+    static string DetermineCacheExtension(string url, string contentType)
+    {
+        string ext = null;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            ext = Path.GetExtension(uri.AbsolutePath);
+        }
+
+        if (string.IsNullOrWhiteSpace(ext))
+        {
+            ext = ExtensionFromContentType(contentType);
+        }
+
+        if (string.IsNullOrWhiteSpace(ext))
+        {
+            ext = ".img";
+        }
+
+        ext = ext.Split('?')[0].Split('#')[0].Trim();
+        if (!ext.StartsWith(".")) ext = "." + ext;
+        ext = Regex.Replace(ext.ToLowerInvariant(), "[^\\.a-z0-9]", "");
+        if (string.IsNullOrEmpty(ext) || ext == ".")
+        {
+            ext = ".img";
+        }
+
+        return ext;
+    }
+
+    static string ExtensionFromContentType(string contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType)) return null;
+
+        contentType = contentType.ToLowerInvariant();
+        if (contentType.Contains("jpeg") || contentType.Contains("jpg")) return ".jpg";
+        if (contentType.Contains("png")) return ".png";
+        if (contentType.Contains("webp")) return ".webp";
+        if (contentType.Contains("gif")) return ".gif";
+        if (contentType.Contains("bmp")) return ".bmp";
+        return null;
     }
 
     IEnumerator DownloadSVG(string url, SVGImage image, RectTransform t, HexCell cell)
