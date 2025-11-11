@@ -119,7 +119,120 @@ namespace TONServer
 
         public static string GetLeftPart(HttpRequest request)
         {
-            return $"{request.Scheme}://{request.Host.Value}";
+            string host = null;
+            string scheme = null;
+
+            if (request != null)
+            {
+                if (request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
+                {
+                    var forwardedHostValue = forwardedHost.ToString();
+                    if (!string.IsNullOrWhiteSpace(forwardedHostValue))
+                    {
+                        var parts = forwardedHostValue.Split(',');
+                        if (parts.Length > 0) host = parts[0].Trim();
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(host) && request.Host.HasValue)
+                {
+                    host = request.Host.Value;
+                }
+
+                if (request.Headers.TryGetValue("X-Forwarded-Proto", out var forwardedProto))
+                {
+                    var forwardedProtoValue = forwardedProto.ToString();
+                    if (!string.IsNullOrWhiteSpace(forwardedProtoValue))
+                    {
+                        var protoParts = forwardedProtoValue.Split(',');
+                        if (protoParts.Length > 0) scheme = protoParts[0].Trim();
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(scheme))
+                {
+                    scheme = request.Scheme;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                host = _Singleton.Host;
+            }
+
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                host = "localhost";
+            }
+
+            var normalizedHost = host.Trim().TrimEnd('/');
+            var hostLower = normalizedHost.ToLowerInvariant();
+            bool isLocal = hostLower.Contains("localhost") || hostLower.StartsWith("127.") || hostLower.StartsWith("::1");
+
+            if (!isLocal)
+            {
+                scheme = Uri.UriSchemeHttps;
+            }
+            else if (string.IsNullOrWhiteSpace(scheme))
+            {
+                scheme = Uri.UriSchemeHttp;
+            }
+
+            if (string.IsNullOrWhiteSpace(scheme))
+            {
+                scheme = Uri.UriSchemeHttps;
+            }
+
+            return $"{scheme.ToLowerInvariant()}://{normalizedHost}";
+        }
+
+        public static string NormalizeAssetUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            var trimmed = url.Trim();
+            if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed;
+            }
+
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            {
+                var host = uri.Host;
+                var normalizedSingletonHost = NormalizeHostValue(_Singleton.Host);
+
+                if (string.Equals(host, "rooms.worldofton.ru", StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(normalizedSingletonHost) &&
+                     string.Equals(host, normalizedSingletonHost, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return "https://" + trimmed.Substring("http://".Length);
+                }
+            }
+
+            return trimmed;
+        }
+
+        private static string NormalizeHostValue(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return null;
+            var value = host.Trim();
+            var commaIndex = value.IndexOf(',');
+            if (commaIndex >= 0) value = value.Substring(0, commaIndex);
+            value = value.Trim();
+            if (value.EndsWith("/")) value = value.TrimEnd('/');
+            var schemeSeparator = value.IndexOf("://", StringComparison.Ordinal);
+            if (schemeSeparator >= 0)
+            {
+                value = value.Substring(schemeSeparator + 3);
+            }
+
+            var portIndex = value.IndexOf(':');
+            if (portIndex >= 0)
+            {
+                value = value.Substring(0, portIndex);
+            }
+
+            return value;
         }
 
         protected string RenderPartialViewToString(string viewName, object model = null)
