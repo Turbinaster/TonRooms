@@ -13,4 +13,10 @@ public static class PluginJS
     public static extern void HideFriendsTeleport();
     [DllImport("__Internal")]
     public static extern void SendMessageToPage1(string text);
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    public static extern void LoadImageToPng(string url, string receiver, string successCallback, string errorCallback, string requestId);
+#else
+    public static void LoadImageToPng(string url, string receiver, string successCallback, string errorCallback, string requestId) { }
+#endif
 }

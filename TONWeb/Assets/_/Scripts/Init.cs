@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -12,6 +13,17 @@ public class Init : MonoBehaviour
     public Texture2D cursorHand;
     public GameObject mobileCanvas, jump, ok;
     public DragImage image;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    private class WebImageRequest
+    {
+        public Action<Texture2D> OnSuccess;
+        public Action<string> OnError;
+    }
+
+    private const float WebImageTimeoutSeconds = 15f;
+    private static readonly Dictionary<string, WebImageRequest> webImageRequests = new Dictionary<string, WebImageRequest>();
+#endif
 
     void Awake()
     {
@@ -81,37 +93,172 @@ public class Init : MonoBehaviour
 
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
-        else
+        Texture2D texture = null;
+        string error = null;
+        yield return LoadTextureFromUrl(url, tex => texture = tex, err => error = err);
+        if (texture == null)
         {
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-
-            //if (t != null)
-            {
-                //Øèðèíà è âûñîòà êàðòèíêè
-                float w = tex.width / 1000f;
-                float h = tex.height / 1000f;
-                if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
-                if (h < 1) { float delta = (float)tex.height / (float)tex.width; h = 1; w = h / delta; }
-                t.sizeDelta = new Vector2(w, h);
-            }
+            if (!string.IsNullOrEmpty(error)) Debug.LogError(error);
+            yield break;
         }
+
+        image.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+
+        //Øèðèíà è âûñîòà êàðòèíêè
+        float w = texture.width / 1000f;
+        float h = texture.height / 1000f;
+        if (w < 1)
+        {
+            float delta = (float)texture.width / (float)texture.height;
+            w = 1;
+            h = w / delta;
+        }
+        if (h < 1)
+        {
+            float delta = (float)texture.height / (float)texture.width;
+            h = 1;
+            w = h / delta;
+        }
+        t.sizeDelta = new Vector2(w, h);
     }
 
     IEnumerator DownloadImage(string url, ProceduralImage image)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
-        yield return request.SendWebRequest();
-        if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
-        else
+        Texture2D texture = null;
+        string error = null;
+        yield return LoadTextureFromUrl(url, tex => texture = tex, err => error = err);
+        if (texture == null)
         {
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            if (!string.IsNullOrEmpty(error)) Debug.LogError(error);
+            yield break;
+        }
+
+        image.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+    }
+
+    IEnumerator LoadTextureFromUrl(string url, Action<Texture2D> onSuccess, Action<string> onError)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (ShouldUseWebpLoader(url))
+        {
+            Texture2D webpTexture = null;
+            string webpError = null;
+            yield return LoadTextureWebGl(url, tex => webpTexture = tex, err => webpError = err);
+            if (webpTexture != null)
+            {
+                onSuccess?.Invoke(webpTexture);
+                yield break;
+            }
+
+            if (!string.IsNullOrEmpty(webpError))
+            {
+                Debug.LogWarning($"WebP loader fallback for {url}: {webpError}");
+            }
+        }
+#endif
+
+        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
+        {
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                onError?.Invoke($"Failed to download image {url}: {request.error}");
+            }
+            else
+            {
+                onSuccess?.Invoke(DownloadHandlerTexture.GetContent(request));
+            }
         }
     }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    private IEnumerator LoadTextureWebGl(string url, Action<Texture2D> onSuccess, Action<string> onError)
+    {
+        bool completed = false;
+        string requestId = Helper.RandomString();
+        webImageRequests[requestId] = new WebImageRequest
+        {
+            OnSuccess = texture =>
+            {
+                completed = true;
+                onSuccess?.Invoke(texture);
+            },
+            OnError = message =>
+            {
+                completed = true;
+                onError?.Invoke(message);
+            }
+        };
+
+        PluginJS.LoadImageToPng(url, gameObject.name, nameof(OnWebImageLoaded), nameof(OnWebImageFailed), requestId);
+
+        float startTime = Time.realtimeSinceStartup;
+        yield return new WaitUntil(() => completed || Time.realtimeSinceStartup - startTime >= WebImageTimeoutSeconds);
+        if (!completed)
+        {
+            webImageRequests.Remove(requestId);
+            onError?.Invoke("Timeout while loading image");
+        }
+    }
+
+    private bool ShouldUseWebpLoader(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+
+        string checkUrl = url;
+        int hashIndex = checkUrl.IndexOf('#');
+        if (hashIndex >= 0) checkUrl = checkUrl.Substring(0, hashIndex);
+        int queryIndex = checkUrl.IndexOf('?');
+        if (queryIndex >= 0) checkUrl = checkUrl.Substring(0, queryIndex);
+
+        if (checkUrl.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) return true;
+        return url.IndexOf("webp", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    public void OnWebImageLoaded(string payload)
+    {
+        if (string.IsNullOrEmpty(payload)) return;
+
+        int separatorIndex = payload.IndexOf('|');
+        if (separatorIndex < 0) return;
+
+        string requestId = payload.Substring(0, separatorIndex);
+        string data = payload.Substring(separatorIndex + 1);
+
+        if (!webImageRequests.TryGetValue(requestId, out var request)) return;
+        webImageRequests.Remove(requestId);
+
+        try
+        {
+            byte[] bytes = Convert.FromBase64String(data);
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!texture.LoadImage(bytes))
+            {
+                request.OnError?.Invoke("Unable to decode image data");
+                return;
+            }
+
+            request.OnSuccess?.Invoke(texture);
+        }
+        catch (Exception ex)
+        {
+            request.OnError?.Invoke(ex.Message);
+        }
+    }
+
+    public void OnWebImageFailed(string payload)
+    {
+        if (string.IsNullOrEmpty(payload)) return;
+
+        int separatorIndex = payload.IndexOf('|');
+        string requestId = separatorIndex >= 0 ? payload.Substring(0, separatorIndex) : payload;
+        string message = separatorIndex >= 0 && payload.Length > separatorIndex + 1 ? payload.Substring(separatorIndex + 1) : "Unknown error";
+
+        if (!webImageRequests.TryGetValue(requestId, out var request)) return;
+        webImageRequests.Remove(requestId);
+        request.OnError?.Invoke(message);
+    }
+#endif
 
     public void ShowCursor()
     {
