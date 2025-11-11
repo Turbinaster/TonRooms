@@ -119,7 +119,7 @@ namespace TONServer
 
         public static string GetLeftPart(HttpRequest request)
         {
-            return $"{request.Scheme}://{request.Host.Value}";
+            return $"{request.Scheme}://{request.Host}";
         }
 
         protected string RenderPartialViewToString(string viewName, object model = null)
