@@ -302,7 +302,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = BuildAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -312,6 +312,47 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private string BuildAvatarUrl(string avatar)
+        {
+            if (string.IsNullOrWhiteSpace(avatar))
+            {
+                return avatar;
+            }
+
+            if (avatar.StartsWith("//"))
+            {
+                return $"{Uri.UriSchemeHttps}:{avatar}";
+            }
+
+            if (Uri.TryCreate(avatar, UriKind.Absolute, out var absoluteUri))
+            {
+                if (absoluteUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    var builder = new UriBuilder(absoluteUri)
+                    {
+                        Scheme = Uri.UriSchemeHttps,
+                        Port = absoluteUri.Port
+                    };
+
+                    if (builder.Port == 80)
+                    {
+                        builder.Port = -1;
+                    }
+
+                    return builder.Uri.ToString();
+                }
+
+                return absoluteUri.ToString();
+            }
+
+            if (!avatar.StartsWith("/"))
+            {
+                avatar = "/" + avatar;
+            }
+
+            return $"{_Controller.GetLeftPart(Request)}{avatar}";
         }
 
         private void RegisterRoomSession(string session, string address)
@@ -329,7 +370,7 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = BuildAvatarUrl("/img/default.png")
                 });
                 db.SaveChanges();
             }
