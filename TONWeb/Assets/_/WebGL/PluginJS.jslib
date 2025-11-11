@@ -27,6 +27,18 @@ mergeInto(LibraryManager.library, {
                 var requestId = toJsString(requestIdPtr);
                 var image = new Image();
                 image.crossOrigin = 'anonymous';
+                var dispatchMessage = function(callbackName, payload) {
+                        if (typeof SendMessage === 'function') {
+                                SendMessage(receiver, callbackName, payload);
+                        } else if (typeof unityInstance !== 'undefined' && typeof unityInstance.SendMessage === 'function') {
+                                unityInstance.SendMessage(receiver, callbackName, payload);
+                        } else if (typeof window !== 'undefined' && window.unityInstance && typeof window.unityInstance.SendMessage === 'function') {
+                                window.unityInstance.SendMessage(receiver, callbackName, payload);
+                        } else {
+                                console.error('Unity instance is not available for message dispatch');
+                        }
+                };
+
                 image.onload = function () {
                         try {
                                 var canvas = document.createElement('canvas');
@@ -36,14 +48,14 @@ mergeInto(LibraryManager.library, {
                                 context.drawImage(image, 0, 0);
                                 var dataUrl = canvas.toDataURL('image/png');
                                 var base64Data = dataUrl.split(',')[1];
-                                Module.SendMessage(receiver, successCallback, requestId + '|' + base64Data);
+                                dispatchMessage(successCallback, requestId + '|' + base64Data);
                         } catch (error) {
                                 var errorMessage = (error && error.message) ? error.message : 'Unknown image conversion error';
-                                Module.SendMessage(receiver, errorCallback, requestId + '|' + errorMessage);
+                                dispatchMessage(errorCallback, requestId + '|' + errorMessage);
                         }
                 };
                 image.onerror = function () {
-                        Module.SendMessage(receiver, errorCallback, requestId + '|Failed to load ' + url);
+                        dispatchMessage(errorCallback, requestId + '|Failed to load ' + url);
                 };
                 image.src = url;
         }
