@@ -302,7 +302,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = EnsureSecureAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -329,10 +329,52 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = EnsureSecureAvatarUrl(null)
                 });
                 db.SaveChanges();
             }
+        }
+
+        private string EnsureSecureAvatarUrl(string avatar)
+        {
+            var baseUrl = _Controller.GetLeftPart(Request);
+            if (string.IsNullOrWhiteSpace(avatar))
+            {
+                return $"{baseUrl}/img/default.png";
+            }
+
+            if (Uri.TryCreate(avatar, UriKind.Absolute, out var absoluteUri))
+            {
+                return EnsureHttpsScheme(absoluteUri);
+            }
+
+            if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) &&
+                Uri.TryCreate(baseUri, avatar, out var combinedUri))
+            {
+                return EnsureHttpsScheme(combinedUri);
+            }
+
+            return $"{baseUrl}/img/default.png";
+        }
+
+        private static string EnsureHttpsScheme(Uri uri)
+        {
+            if (uri == null)
+            {
+                return null;
+            }
+
+            if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return uri.ToString();
+            }
+
+            var builder = new UriBuilder(uri)
+            {
+                Scheme = Uri.UriSchemeHttps,
+                Port = uri.Port == 80 ? -1 : uri.Port
+            };
+            return builder.Uri.ToString();
         }
 
         [HttpPost]
