@@ -288,7 +288,8 @@ namespace TONServer.Controllers
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            var avatarUrl = BuildSecureAvatarUrl($"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, avatarUrl);
             return StatusCode(200);
         }
 
@@ -302,7 +303,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = BuildSecureAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -312,6 +313,45 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private string BuildSecureAvatarUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return url;
+            }
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
+            {
+                return EnsureHttps(absolute).ToString();
+            }
+
+            try
+            {
+                var baseUri = new Uri(_Controller.GetLeftPart(Request));
+                var combined = new Uri(baseUri, url);
+                return EnsureHttps(combined).ToString();
+            }
+            catch
+            {
+                return url;
+            }
+        }
+
+        private static Uri EnsureHttps(Uri uri)
+        {
+            if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(uri)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = uri.Port == 80 ? -1 : uri.Port
+                };
+                return builder.Uri;
+            }
+
+            return uri;
         }
 
         private void RegisterRoomSession(string session, string address)
@@ -329,7 +369,7 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = BuildSecureAvatarUrl($"{_Controller.GetLeftPart(Request)}/img/default.png")
                 });
                 db.SaveChanges();
             }
