@@ -119,7 +119,7 @@ namespace TONServer
                                         await convert.SaveFileAsync(path);
                                     }
                                     string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
-                                    image.Url = result;
+                                    image.Url = _Controller.NormalizeAssetUrl(result);
                                 }
                                 images.Add(image);
                             }
@@ -260,6 +260,7 @@ namespace TONServer
             string url = "ipfs://bafybeibwffjrngqzvmckaa36y5lc3aihzuepjkbsllktsedxc5wu3ctuvu/7454.svg";
             string file = url.Replace("/", "").Replace(":", "").Replace(".", "") + ".png";
             string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+            result = _Controller.NormalizeAssetUrl(result);
             var ipfs = new IpfsEngine(new char[] { 'q' });
             string text = await ipfs.FileSystem.ReadAllTextAsync(url.Replace("ipfs://", ""));
             return Content(text);

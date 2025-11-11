@@ -76,6 +76,7 @@ namespace TONServer.Controllers
                 string address1 = Rep.SessionAddress(db, session, ref address, out var room, out var owner);
                 bool result = address == address1;
                 var items = db.ImageWebs.Where(x => x.Address == address && x.Selected).ToList();
+                NormalizeImageUrls(items);
                 bool auth = owner != null;
                 var incoming = auth ? db.RoomWebs.Where(x => owner.IncomingsList.Contains(x.Id)).Count() : 0;
                 return Json(new { r = "ok", result, items, room, auth, owner, text = Rep.FriendsButtonText(owner, room), incoming });
@@ -86,10 +87,10 @@ namespace TONServer.Controllers
         [HttpPost]
         public async Task<IActionResult> GetNft(string session)
         {
+            string address = "";
             try
             {
                 var images = new List<ImageWeb>();
-                string address = "";
                 if (session == null && _Singleton.Development) address = "EQB0zy3wOR35FF1q2j3NsCxOyqzoRYioFroMqvsYEJ7mJ7-6";
                 else address = _Singleton.Sessions.ContainsKey(session) ? _Singleton.Sessions[session] : "";
                 LogInformation($"RoomController.GetNft invoked for session '{session ?? "<null>"}' with address '{address}'.");
@@ -181,7 +182,7 @@ namespace TONServer.Controllers
                             }
 
                             string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
-                            image.Url = result;
+                            image.Url = _Controller.NormalizeAssetUrl(result);
                             images.Add(image);
                         }
                         catch (Exception ex) { Helper.Log(ex); }
@@ -191,7 +192,9 @@ namespace TONServer.Controllers
                     foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
                     db.SaveChanges();
                     LogInformation($"Synchronized {images.Count} NFT images for address '{address}'.");
-                    return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    NormalizeImageUrls(storedImages);
+                    return Json(new { r = "ok", images = storedImages });
                 }
                 else
                 {
@@ -199,13 +202,40 @@ namespace TONServer.Controllers
                     var status = nftResponse?.StatusCode;
                     var message = $"TON API did not return NFT data for address '{address}' (status {(int?)status} {status}).";
                     LogWarning(message);
-                    return Json(new { r = "error", m = message, images = db.ImageWebs.Where(x => x.Address == address).ToList() });
+                    var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                    NormalizeImageUrls(storedImages);
+                    return Json(new { r = "error", m = message, images = storedImages });
                 }
             }
             catch (Exception ex)
             {
                 LogException(ex, "Unhandled exception while loading NFTs for room.");
-                return Json(new { r = "error", m = ex.Message });
+                var storedImages = db.ImageWebs.Where(x => x.Address == address).ToList();
+                NormalizeImageUrls(storedImages);
+                return Json(new { r = "error", m = ex.Message, images = storedImages });
+            }
+        }
+
+        private void NormalizeImageUrls(List<ImageWeb> images)
+        {
+            if (images == null || images.Count == 0) return;
+
+            bool changed = false;
+            foreach (var image in images)
+            {
+                if (image == null) continue;
+
+                var normalized = _Controller.NormalizeAssetUrl(image.Url);
+                if (!string.IsNullOrWhiteSpace(normalized) && !string.Equals(image.Url, normalized, StringComparison.Ordinal))
+                {
+                    image.Url = normalized;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                db.SaveChanges();
             }
         }
 
