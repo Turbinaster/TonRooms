@@ -302,7 +302,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = NormalizeAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -312,6 +312,69 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private string NormalizeAvatarUrl(string avatar)
+        {
+            if (string.IsNullOrWhiteSpace(avatar))
+            {
+                return avatar;
+            }
+
+            avatar = avatar.Trim();
+
+            if (avatar.StartsWith("//"))
+            {
+                return $"{Uri.UriSchemeHttps}:{avatar}";
+            }
+
+            if (Uri.TryCreate(avatar, UriKind.Absolute, out var absolute))
+            {
+                if (absolute.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    return absolute.ToString();
+                }
+
+                if (absolute.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    var builder = new UriBuilder(absolute)
+                    {
+                        Scheme = Uri.UriSchemeHttps,
+                        Port = absolute.Port == 80 ? -1 : absolute.Port
+                    };
+                    return builder.Uri.ToString();
+                }
+
+                return absolute.ToString();
+            }
+
+            var baseBuilder = new UriBuilder(_Controller.GetLeftPart(Request))
+            {
+                Scheme = Uri.UriSchemeHttps,
+                Port = -1
+            };
+
+            if (Uri.TryCreate(baseBuilder.Uri, avatar, out var combined))
+            {
+                if (combined.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    return combined.ToString();
+                }
+
+                if (combined.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    var builder = new UriBuilder(combined)
+                    {
+                        Scheme = Uri.UriSchemeHttps,
+                        Port = combined.Port == 80 ? -1 : combined.Port
+                    };
+                    return builder.Uri.ToString();
+                }
+
+                return combined.ToString();
+            }
+
+            return avatar;
         }
 
         private void RegisterRoomSession(string session, string address)
