@@ -157,8 +157,33 @@ namespace TONServer
         {
             if (string.IsNullOrWhiteSpace(url)) return url;
 
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return url;
-            if (!uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) return url;
+            var trimmed = url.Trim();
+
+            if (TryUpgradeAssetUrl(request, trimmed, out var upgraded))
+            {
+                return upgraded;
+            }
+
+            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                trimmed.IndexOf("worldofton.ru", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var https = "https://" + trimmed.Substring("http://".Length);
+                if (!string.Equals(trimmed, https, StringComparison.Ordinal))
+                {
+                    LogInformation($"Normalized worldofton asset URL via fallback: '{trimmed}' -> '{https}'.");
+                }
+                return https;
+            }
+
+            return trimmed;
+        }
+
+        private static bool TryUpgradeAssetUrl(HttpRequest request, string url, out string upgraded)
+        {
+            upgraded = url;
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+            if (!uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) return false;
 
             var candidateHosts = new List<string>();
 
@@ -198,26 +223,31 @@ namespace TONServer
                                             (!string.IsNullOrWhiteSpace(uriHostNormalized) &&
                                              string.Equals(host, uriHostNormalized, StringComparison.OrdinalIgnoreCase))))
             {
-                var builder = new UriBuilder(uri)
-                {
-                    Scheme = Uri.UriSchemeHttps,
-                    Port = -1
-                };
-                return builder.Uri.ToString();
+                upgraded = BuildHttpsUrl(uri);
+                return true;
             }
 
             if (!string.IsNullOrWhiteSpace(uriHostNormalized) &&
                 uriHostNormalized.IndexOf("worldofton.ru", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                var builder = new UriBuilder(uri)
-                {
-                    Scheme = Uri.UriSchemeHttps,
-                    Port = -1
-                };
-                return builder.Uri.ToString();
+                upgraded = BuildHttpsUrl(uri);
+                return true;
             }
 
-            return url;
+            return false;
+        }
+
+        private static string BuildHttpsUrl(Uri uri)
+        {
+            if (uri == null) return null;
+
+            var builder = new UriBuilder(uri)
+            {
+                Scheme = Uri.UriSchemeHttps,
+                Port = -1
+            };
+
+            return builder.Uri.ToString();
         }
 
         private static string GetForwardedComponent(HttpRequest request, string key)

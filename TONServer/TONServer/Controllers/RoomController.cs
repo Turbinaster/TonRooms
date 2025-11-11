@@ -220,19 +220,36 @@ namespace TONServer.Controllers
             if (images == null) return;
 
             bool changed = false;
+            int normalizedCount = 0;
+            string address = null;
             foreach (var image in images)
             {
                 if (image == null) continue;
 
                 var normalized = _Controller.NormalizeAssetUrl(Request, image.Url);
+                if (string.IsNullOrWhiteSpace(normalized) && !string.IsNullOrWhiteSpace(image.Url))
+                {
+                    normalized = image.Url.Trim();
+                }
+
                 if (!string.Equals(image.Url, normalized, StringComparison.Ordinal))
                 {
                     image.Url = normalized;
                     changed = true;
+                    normalizedCount++;
+                }
+
+                if (string.IsNullOrEmpty(address) && !string.IsNullOrWhiteSpace(image?.Address))
+                {
+                    address = image.Address;
                 }
             }
 
-            if (changed) db.SaveChanges();
+            if (changed)
+            {
+                db.SaveChanges();
+                LogInformation($"NormalizeImageUrls upgraded {normalizedCount} URL(s) to HTTPS for address '{address ?? "<unknown>"}'.");
+            }
         }
 
         private async Task<string> ResolveNftImageUrlAsync(JToken item)
