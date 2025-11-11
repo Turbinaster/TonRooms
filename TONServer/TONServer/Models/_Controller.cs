@@ -183,7 +183,31 @@ namespace TONServer
 
             candidateHosts = candidateHosts.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            if (candidateHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+            var uriHostNormalized = NormalizeHostForComparison(uri.Host);
+
+            if (!candidateHosts.Any())
+            {
+                if (!string.IsNullOrWhiteSpace(uriHostNormalized) &&
+                    uriHostNormalized.EndsWith(".worldofton.ru", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateHosts.Add(uriHostNormalized);
+                }
+            }
+
+            if (candidateHosts.Any(host => string.Equals(host, uri.Host, StringComparison.OrdinalIgnoreCase) ||
+                                            (!string.IsNullOrWhiteSpace(uriHostNormalized) &&
+                                             string.Equals(host, uriHostNormalized, StringComparison.OrdinalIgnoreCase))))
+            {
+                var builder = new UriBuilder(uri)
+                {
+                    Scheme = Uri.UriSchemeHttps,
+                    Port = -1
+                };
+                return builder.Uri.ToString();
+            }
+
+            if (!string.IsNullOrWhiteSpace(uriHostNormalized) &&
+                uriHostNormalized.IndexOf("worldofton.ru", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 var builder = new UriBuilder(uri)
                 {
