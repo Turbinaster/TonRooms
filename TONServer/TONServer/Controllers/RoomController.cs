@@ -180,15 +180,36 @@ namespace TONServer.Controllers
                                 continue;
                             }
 
-                            string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+                            string result = BuildAbsoluteUrl($"/files/{file}");
                             image.Url = result;
                             images.Add(image);
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
+                    foreach (var image in images)
+                    {
+                        image.Url = NormalizeMediaUrl(image.Url);
+                    }
+
                     var recs = db.ImageWebs.Where(x => x.Address == address).ToList();
-                    foreach (var image in images) if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
-                    foreach (var rec in recs) if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
+                    foreach (var rec in recs)
+                    {
+                        var normalized = NormalizeMediaUrl(rec.Url);
+                        if (!string.Equals(rec.Url, normalized, StringComparison.Ordinal))
+                        {
+                            rec.Url = normalized;
+                        }
+                    }
+
+                    foreach (var image in images)
+                    {
+                        if (!recs.Any(x => x.Url == image.Url)) db.ImageWebs.Add(image);
+                    }
+
+                    foreach (var rec in recs)
+                    {
+                        if (!images.Any(x => x.Url == rec.Url)) db.ImageWebs.Remove(rec);
+                    }
                     db.SaveChanges();
                     LogInformation($"Synchronized {images.Count} NFT images for address '{address}'.");
                     return Json(new { r = "ok", images = db.ImageWebs.Where(x => x.Address == address).ToList() });
@@ -288,7 +309,8 @@ namespace TONServer.Controllers
         public async Task<IActionResult> AddAvatar(IFormFileCollection files)
         {
             var list = await Rep.SaveFiles(files, env);
-            await _Hub.SendSession("profile_edit_avatar", session, $"{_Controller.GetLeftPart(Request)}/files/{list[0]}");
+            var avatarUrl = BuildAbsoluteUrl($"/files/{list[0]}");
+            await _Hub.SendSession("profile_edit_avatar", session, avatarUrl);
             return StatusCode(200);
         }
 
@@ -302,7 +324,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = NormalizeMediaUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -329,10 +351,37 @@ namespace TONServer.Controllers
                 {
                     Address = address,
                     Name = shortName,
-                    Avatar = $"{_Controller.GetLeftPart(Request)}/img/default.png"
+                    Avatar = BuildAbsoluteUrl("/img/default.png")
                 });
                 db.SaveChanges();
             }
+        }
+
+        private string NormalizeMediaUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            var trimmed = value.Trim();
+            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                return "https://" + trimmed.Substring("http://".Length);
+            }
+
+            return trimmed;
+        }
+
+        private string BuildAbsoluteUrl(string path)
+        {
+            var normalized = NormalizeMediaUrl(path);
+            if (string.IsNullOrEmpty(normalized)) return normalized;
+
+            if (normalized.StartsWith("/"))
+            {
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                return new Uri(new Uri(baseUrl), normalized).ToString();
+            }
+
+            return normalized;
         }
 
         [HttpPost]

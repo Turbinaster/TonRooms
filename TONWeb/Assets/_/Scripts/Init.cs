@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -41,7 +42,7 @@ public class Init : MonoBehaviour
     public void GetNft(string value)
     {
         var set = new Set();
-        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "http://rooms.worldofton.ru/files/httpsnfttondiamondsnft29982998svg.png" });
+        if (string.IsNullOrEmpty(value)) set.Items.Add(new ImageWeb { Url = "/files/httpsnfttondiamondsnft29982998svg.png" });
         else set = JsonConvert.DeserializeObject<Set>(value);
         var walls = new List<Transform>();
         var walls_o = GameObject.Find("Walls");
@@ -75,13 +76,15 @@ public class Init : MonoBehaviour
             }
 
             var image = img_o.AddComponent<Image>();
+            item.Url = NormalizeMediaUrl(item.Url);
             StartCoroutine(DownloadImage(item.Url, image, t));
         }
     }
 
     IEnumerator DownloadImage(string url, Image image, RectTransform t)
     {
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        var requestUrl = ResolveRequestUrl(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(requestUrl);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success) Debug.Log(request.error);
         else
@@ -91,8 +94,56 @@ public class Init : MonoBehaviour
 
             //if (t != null)
             {
-                //Ўирина и высота картинки
-                float w = tex.width / 1000f;
+        var requestUrl = ResolveRequestUrl(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(requestUrl);
+        string avatar = NormalizeMediaUrl(split[0]);
+
+    private static string NormalizeMediaUrl(string rawUrl)
+    {
+        if (string.IsNullOrEmpty(rawUrl)) return rawUrl;
+
+        var trimmed = rawUrl.Trim();
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            return "https://" + trimmed.Substring("http://".Length);
+        }
+
+        return trimmed;
+    }
+
+    private static string ResolveRequestUrl(string rawUrl)
+    {
+        var normalized = NormalizeMediaUrl(rawUrl);
+        if (string.IsNullOrEmpty(normalized)) return normalized;
+
+        if (normalized.StartsWith("/"))
+        {
+            var origin = GetPageOrigin();
+            if (!string.IsNullOrEmpty(origin))
+            {
+                return origin + normalized;
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string GetPageOrigin()
+    {
+        var absoluteUrl = Application.absoluteURL;
+        if (string.IsNullOrEmpty(absoluteUrl)) return string.Empty;
+
+        try
+        {
+            var uri = new Uri(absoluteUrl);
+            return uri.GetLeftPart(UriPartial.Authority);
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
                 float h = tex.height / 1000f;
                 if (w < 1) { float delta = (float)tex.width / (float)tex.height; w = 1; h = w / delta; }
                 if (h < 1) { float delta = (float)tex.height / (float)tex.width; h = 1; w = h / delta; }
