@@ -302,7 +302,7 @@ namespace TONServer.Controllers
                 if (string.IsNullOrEmpty(address)) address = "EQDaVOscxs5EoL2X84KQMl0dKL0NhPhsZGd00dMTqWGl834b";
                 var rec = db.RoomWebs.FirstOrDefault(x => x.Address == address);
                 if (rec == null) { rec = new RoomWeb { Address = address }; db.RoomWebs.Add(rec); }
-                rec.Avatar = profile_edit_avatar;
+                rec.Avatar = NormalizeAvatarUrl(profile_edit_avatar);
                 rec.Name = profile_edit_name;
                 if (string.IsNullOrEmpty(rec.Name)) rec.Name = $"{address.Substring(0, 4)}..{address.Substring(address.Length - 4, 4)}";
                 rec.Desc = profile_edit_desc;
@@ -312,6 +312,45 @@ namespace TONServer.Controllers
                 return Json(new { r = "ok", rec });
             }
             catch (Exception ex) { return Json(new { r = "error", m = ex.Message }); }
+        }
+
+        private string NormalizeAvatarUrl(string avatar)
+        {
+            if (string.IsNullOrWhiteSpace(avatar))
+            {
+                return avatar;
+            }
+
+            avatar = avatar.Trim();
+
+            if (avatar.StartsWith("//"))
+            {
+                return $"{Request.Scheme}:{avatar}";
+            }
+
+            if (Uri.TryCreate(avatar, UriKind.Absolute, out var absoluteUri))
+            {
+                if (!string.Equals(absoluteUri.Scheme, Request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                    (string.Equals(Request.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(Request.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var builder = new UriBuilder(absoluteUri)
+                    {
+                        Scheme = Request.Scheme,
+                        Port = -1
+                    };
+                    return builder.Uri.ToString();
+                }
+
+                return absoluteUri.ToString();
+            }
+
+            if (!avatar.StartsWith("/", StringComparison.Ordinal))
+            {
+                avatar = "/" + avatar;
+            }
+
+            return $"{_Controller.GetLeftPart(Request)}{avatar}";
         }
 
         private void RegisterRoomSession(string session, string address)
