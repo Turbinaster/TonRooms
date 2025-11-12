@@ -94,7 +94,22 @@ public class HexGrid : MonoBehaviour
     {
         string url1 = url;
         string ext = Regex.Match(url, @"\.[^\.]+$").Value;
-        string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
+        if (ext.Contains("?")) ext = ext.Substring(0, ext.IndexOf("?"));
+        string fileName = url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "");
+        bool requiresReencode = string.Equals(ext, ".webp", System.StringComparison.OrdinalIgnoreCase);
+        string cacheExt = requiresReencode ? ".png" : ext;
+        if (string.IsNullOrEmpty(cacheExt)) cacheExt = ".png";
+
+        if (requiresReencode)
+        {
+            string oldPath = Path.Combine(Application.persistentDataPath, fileName + ext);
+            if (!string.IsNullOrEmpty(ext) && File.Exists(oldPath) && !string.Equals(ext, cacheExt))
+            {
+                File.Delete(oldPath);
+            }
+        }
+
+        string path = Path.Combine(Application.persistentDataPath, fileName + cacheExt);
         if (File.Exists(path)) url = $"file://{path}";
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
         yield return request.SendWebRequest();
@@ -102,8 +117,23 @@ public class HexGrid : MonoBehaviour
             Debug.Log(request.error);
         else
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
-            var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
+            var handler = (DownloadHandlerTexture)request.downloadHandler;
+            var tex = handler.texture;
+            if (!File.Exists(path))
+            {
+                if (requiresReencode)
+                {
+                    byte[] pngData = tex.EncodeToPNG();
+                    if (pngData != null)
+                    {
+                        File.WriteAllBytes(path, pngData);
+                    }
+                }
+                else
+                {
+                    File.WriteAllBytes(path, request.downloadHandler.data);
+                }
+            }
             image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
             if (a != null) a();
