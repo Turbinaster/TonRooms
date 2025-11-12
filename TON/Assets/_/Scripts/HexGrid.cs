@@ -111,7 +111,7 @@ public class HexGrid : MonoBehaviour
 
         string path = Path.Combine(Application.persistentDataPath, fileName + cacheExt);
         if (File.Exists(path)) url = $"file://{path}";
-        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        UnityWebRequest request = UnityWebRequestTexture.GetTexture(url, false);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
             Debug.Log(request.error);
