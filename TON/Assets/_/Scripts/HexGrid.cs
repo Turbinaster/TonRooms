@@ -97,39 +97,76 @@ public class HexGrid : MonoBehaviour
         if (ext.Contains("?")) ext = ext.Substring(0, ext.IndexOf("?"));
         string fileName = url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "");
         bool requiresReencode = string.Equals(ext, ".webp", System.StringComparison.OrdinalIgnoreCase);
-        string cacheExt = requiresReencode ? ".png" : ext;
-        if (string.IsNullOrEmpty(cacheExt)) cacheExt = ".png";
+        bool canReencode = requiresReencode && Application.platform != RuntimePlatform.WebGLPlayer;
+        bool allowCache = !requiresReencode || canReencode;
+        string cacheExt = allowCache ? (requiresReencode ? ".png" : ext) : null;
+        if (string.IsNullOrEmpty(cacheExt) && allowCache) cacheExt = ".png";
+
+        string path = allowCache ? Path.Combine(Application.persistentDataPath, fileName + cacheExt) : null;
 
         if (requiresReencode)
         {
             string oldPath = Path.Combine(Application.persistentDataPath, fileName + ext);
-            if (!string.IsNullOrEmpty(ext) && File.Exists(oldPath) && !string.Equals(ext, cacheExt))
+            if (!string.IsNullOrEmpty(ext) && File.Exists(oldPath))
             {
                 File.Delete(oldPath);
             }
+            if (!canReencode)
+            {
+                string stalePng = Path.Combine(Application.persistentDataPath, fileName + ".png");
+                if (File.Exists(stalePng)) File.Delete(stalePng);
+            }
         }
 
-        string path = Path.Combine(Application.persistentDataPath, fileName + cacheExt);
-        if (File.Exists(path)) url = $"file://{path}";
+        bool usingCache = allowCache && File.Exists(path);
+        if (usingCache)
+        {
+            url = $"file://{path}";
+        }
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url, false);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
+        {
+            if (usingCache && allowCache)
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch { }
+                StartCoroutine(DownloadImage(url1, image, a, calc, t, cell, walls));
+                yield break;
+            }
+
             Debug.Log(request.error);
+        }
         else
         {
             var handler = (DownloadHandlerTexture)request.downloadHandler;
             var tex = handler.texture;
-            if (!File.Exists(path))
+            if (allowCache && !File.Exists(path))
             {
-                if (requiresReencode)
+                if (requiresReencode && canReencode)
                 {
-                    byte[] pngData = tex.EncodeToPNG();
-                    if (pngData != null)
+                    byte[] pngData = null;
+                    try
+                    {
+                        pngData = tex.EncodeToPNG();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"Failed to convert WebP to PNG: {ex.Message}");
+                    }
+                    if (pngData != null && pngData.Length > 0)
                     {
                         File.WriteAllBytes(path, pngData);
                     }
+                    else
+                    {
+                        allowCache = false;
+                    }
                 }
-                else
+                else if (!requiresReencode)
                 {
                     File.WriteAllBytes(path, request.downloadHandler.data);
                 }
