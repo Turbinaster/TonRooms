@@ -141,25 +141,24 @@ namespace TONServer.Controllers
                             string external_url = item?["metadata"]?["external_url"]?.ToString();
                             var image = new ImageWeb { Address = address, Name = name, Description = description, ExternalUrl = external_url };
 
-                            bool requiresSvgConversion;
-                            string file = BuildAssetFileName(uri, out requiresSvgConversion);
+                            string file = BuildAssetFileName(uri, out var conversionSourceFormat);
                             string path = Path.Combine(_Singleton.WebRootPath, "files", file);
 
                             var assetReady = System.IO.File.Exists(path);
-                            if (requiresSvgConversion)
+                            if (!string.IsNullOrWhiteSpace(conversionSourceFormat))
                             {
                                 if (!assetReady)
                                 {
                                     try
                                     {
                                         var convertApi = new ConvertApi("E9GpCfXSdIfFw81b");
-                                        var convert = await convertApi.ConvertAsync("svg", "png", new ConvertApiFileParam("File", url));
+                                        var convert = await convertApi.ConvertAsync(conversionSourceFormat, "png", new ConvertApiFileParam("File", url));
                                         await convert.SaveFileAsync(path);
                                         assetReady = System.IO.File.Exists(path);
                                     }
                                     catch (Exception svgEx)
                                     {
-                                        LogException(svgEx, $"Failed to convert SVG NFT image '{url}'.");
+                                        LogException(svgEx, $"Failed to convert NFT image '{url}' from {conversionSourceFormat} to png.");
                                         continue;
                                     }
                                 }
@@ -254,12 +253,11 @@ namespace TONServer.Controllers
             return string.IsNullOrWhiteSpace(detailUrl) ? null : detailUrl.Trim();
         }
 
-        private static string BuildAssetFileName(Uri uri, out bool requiresSvgConversion)
+        private static string BuildAssetFileName(Uri uri, out string conversionSourceFormat)
         {
-            requiresSvgConversion = false;
+            conversionSourceFormat = null;
             if (uri == null)
             {
-                requiresSvgConversion = false;
                 return Guid.NewGuid().ToString("N") + ".png";
             }
 
@@ -267,9 +265,9 @@ namespace TONServer.Controllers
             if (string.IsNullOrWhiteSpace(extension)) extension = ".png";
 
             extension = extension.ToLowerInvariant();
-            if (extension == ".svg")
+            if (extension == ".svg" || extension == ".webp")
             {
-                requiresSvgConversion = true;
+                conversionSourceFormat = extension.TrimStart('.');
                 extension = ".png";
             }
 
