@@ -347,7 +347,7 @@ namespace TONServer.Controllers
             if (string.IsNullOrWhiteSpace(extension)) extension = ".png";
 
             extension = extension.ToLowerInvariant();
-            if (extension == ".svg" || extension == ".webp")
+            if (extension == ".svg")
             {
                 conversionSourceFormat = extension.TrimStart('.');
                 extension = ".png";
