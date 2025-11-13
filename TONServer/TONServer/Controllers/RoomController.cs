@@ -115,24 +115,10 @@ namespace TONServer.Controllers
                     {
                         try
                         {
-                            string url = await ResolveNftImageUrlAsync(item);
-                            if (string.IsNullOrWhiteSpace(url))
+                            var imageUrls = await GetNftImageUrlCandidatesAsync(item);
+                            if (imageUrls == null || imageUrls.Count == 0)
                             {
-                                LogWarning($"Skipping NFT without usable metadata.image value. Address: '{item?["address"]?.ToString() ?? "<unknown>"}'.");
-                                continue;
-                            }
-
-                            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-                                !(uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-                                  uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                LogWarning($"Skipping NFT image with non-http(s) URL '{url}'.");
-                                continue;
-                            }
-
-                            if (url.StartsWith("ipfs:", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-                            {
-                                LogInformation($"Skipping unsupported NFT asset '{url}'.");
+                                LogWarning($"Skipping NFT without usable image data. Address: '{item?["address"]?.ToString() ?? "<unknown>"}'.");
                                 continue;
                             }
 
@@ -141,48 +127,76 @@ namespace TONServer.Controllers
                             string external_url = item?["metadata"]?["external_url"]?.ToString();
                             var image = new ImageWeb { Address = address, Name = name, Description = description, ExternalUrl = external_url };
 
-                            string file = BuildAssetFileName(uri, out var conversionSourceFormat);
-                            string path = Path.Combine(_Singleton.WebRootPath, "files", file);
+                            bool stored = false;
+                            foreach (var candidateUrl in imageUrls)
+                            {
+                                var url = candidateUrl;
+                                if (string.IsNullOrWhiteSpace(url)) continue;
 
-                            var assetReady = System.IO.File.Exists(path);
-                            if (!string.IsNullOrWhiteSpace(conversionSourceFormat))
-                            {
-                                if (!assetReady)
+                                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                                    !(uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                                      uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
                                 {
-                                    try
-                                    {
-                                        var convertApi = new ConvertApi("E9GpCfXSdIfFw81b");
-                                        var convert = await convertApi.ConvertAsync(conversionSourceFormat, "png", new ConvertApiFileParam("File", url));
-                                        await convert.SaveFileAsync(path);
-                                        assetReady = System.IO.File.Exists(path);
-                                    }
-                                    catch (Exception svgEx)
-                                    {
-                                        LogException(svgEx, $"Failed to convert NFT image '{url}' from {conversionSourceFormat} to png.");
-                                        continue;
-                                    }
-                                }
-                            }
-                            else if (!assetReady)
-                            {
-                                var downloaded = await DownloadFileAsync(url, path);
-                                if (!downloaded)
-                                {
-                                    LogWarning($"Skipping NFT image because download failed: '{url}'.");
+                                    LogWarning($"Skipping NFT image with non-http(s) URL '{url}'.");
                                     continue;
                                 }
-                                assetReady = System.IO.File.Exists(path);
+
+                                if (url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    LogInformation($"Skipping unsupported NFT asset '{url}'.");
+                                    continue;
+                                }
+
+                                string file = BuildAssetFileName(uri, out var conversionSourceFormat);
+                                string path = Path.Combine(_Singleton.WebRootPath, "files", file);
+
+                                var assetReady = System.IO.File.Exists(path);
+                                if (!string.IsNullOrWhiteSpace(conversionSourceFormat))
+                                {
+                                    if (!assetReady)
+                                    {
+                                        try
+                                        {
+                                            var convertApi = new ConvertApi("E9GpCfXSdIfFw81b");
+                                            var convert = await convertApi.ConvertAsync(conversionSourceFormat, "png", new ConvertApiFileParam("File", url));
+                                            await convert.SaveFileAsync(path);
+                                            assetReady = System.IO.File.Exists(path);
+                                        }
+                                        catch (Exception svgEx)
+                                        {
+                                            LogException(svgEx, $"Failed to convert NFT image '{url}' from {conversionSourceFormat} to png.");
+                                            continue;
+                                        }
+                                    }
+                                }
+                                else if (!assetReady)
+                                {
+                                    var downloaded = await DownloadFileAsync(url, path);
+                                    if (!downloaded)
+                                    {
+                                        LogWarning($"Skipping NFT image because download failed: '{url}'.");
+                                        continue;
+                                    }
+                                    assetReady = System.IO.File.Exists(path);
+                                }
+
+                                if (!assetReady)
+                                {
+                                    LogWarning($"NFT image was not stored locally after processing URL '{url}'.");
+                                    continue;
+                                }
+
+                                string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
+                                image.Url = _Controller.NormalizeAssetUrl(result);
+                                images.Add(image);
+                                stored = true;
+                                break;
                             }
 
-                            if (!assetReady)
+                            if (!stored)
                             {
-                                LogWarning($"NFT image was not stored locally after processing URL '{url}'.");
-                                continue;
+                                LogWarning($"Skipping NFT image because no available sources could be processed. Address: '{item?["address"]?.ToString() ?? "<unknown>"}'.");
                             }
-
-                            string result = $"{_Controller.GetLeftPart(Request)}/files/{file}";
-                            image.Url = _Controller.NormalizeAssetUrl(result);
-                            images.Add(image);
                         }
                         catch (Exception ex) { Helper.Log(ex); }
                     }
@@ -238,6 +252,28 @@ namespace TONServer.Controllers
             }
         }
 
+        private async Task<List<string>> GetNftImageUrlCandidatesAsync(JToken item)
+        {
+            var result = new List<string>();
+            if (item == null) return result;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void AddCandidate(string candidate)
+            {
+                if (string.IsNullOrWhiteSpace(candidate)) return;
+                candidate = candidate.Trim();
+                if (seen.Add(candidate)) result.Add(candidate);
+            }
+
+            var primary = await ResolveNftImageUrlAsync(item);
+            AddCandidate(primary);
+
+            var preview = ResolveNftPreviewUrl(item);
+            AddCandidate(preview);
+
+            return result;
+        }
+
         private async Task<string> ResolveNftImageUrlAsync(JToken item)
         {
             if (item == null) return null;
@@ -251,6 +287,44 @@ namespace TONServer.Controllers
             var detailResponse = await GetTonApiJsonAsync($"https://tonapi.io/v2/nfts/{address}");
             var detailUrl = detailResponse?.Json?["metadata"]?["image"]?.ToString();
             return string.IsNullOrWhiteSpace(detailUrl) ? null : detailUrl.Trim();
+        }
+
+        private static string ResolveNftPreviewUrl(JToken item)
+        {
+            if (item == null) return null;
+
+            var previews = item["previews"] as JArray;
+            if (previews == null || previews.Count == 0) return null;
+
+            string bestUrl = null;
+            double bestScore = -1;
+
+            foreach (var preview in previews)
+            {
+                var url = preview?["url"]?.ToString();
+                if (string.IsNullOrWhiteSpace(url)) continue;
+
+                var resolution = preview?["resolution"]?.ToString();
+                double score = 0;
+                if (!string.IsNullOrWhiteSpace(resolution))
+                {
+                    var parts = resolution.Split('x');
+                    if (parts.Length == 2 &&
+                        int.TryParse(parts[0], out var width) &&
+                        int.TryParse(parts[1], out var height))
+                    {
+                        score = width * height;
+                    }
+                }
+
+                if (bestUrl == null || score > bestScore)
+                {
+                    bestScore = score;
+                    bestUrl = url.Trim();
+                }
+            }
+
+            return bestUrl;
         }
 
         private static string BuildAssetFileName(Uri uri, out string conversionSourceFormat)
