@@ -94,15 +94,16 @@ public class HexGrid : MonoBehaviour
     {
         string url1 = url;
         string ext = Regex.Match(url, @"\.[^\.]+$").Value;
+        bool canUseFileCache = !string.IsNullOrEmpty(ext) && !ext.Equals(".webp", System.StringComparison.OrdinalIgnoreCase);
         string path = Path.Combine(Application.persistentDataPath, url.Replace("/", "").Replace(":", "").Replace(".", "").Replace("?", "").Replace("%20", "") + ext);
-        if (File.Exists(path)) url = $"file://{path}";
+        if (canUseFileCache && File.Exists(path)) url = $"file://{path}";
         UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success)
             Debug.Log(request.error);
         else
         {
-            if (!File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
+            if (canUseFileCache && !File.Exists(path)) File.WriteAllBytes(path, request.downloadHandler.data);
             var tex = ((DownloadHandlerTexture)request.downloadHandler).texture;
             image.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
